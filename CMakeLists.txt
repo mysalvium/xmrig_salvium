@@ -26,6 +26,7 @@ option(WITH_ADL             "Enable ADL (AMD Display Library) or sysfs support (
 option(WITH_STRICT_CACHE    "Enable strict checks for OpenCL cache" ON)
 option(WITH_INTERLEAVE_DEBUG_LOG "Enable debug log for threads interleave" OFF)
 option(WITH_PROFILING       "Enable profiling for developers" OFF)
+option(WITH_SALVIUM_TESTS   "Build Salvium/donation regression tests" OFF)
 option(WITH_SSE4_1          "Enable SSE 4.1 for Blake2" ON)
 option(WITH_AVX2            "Enable AVX2 for Blake2" ON)
 option(WITH_VAES            "Enable VAES instructions for Cryptonight" ON)
@@ -238,6 +239,32 @@ endif()
 
 add_executable(${CMAKE_PROJECT_NAME} ${HEADERS} ${SOURCES} ${SOURCES_OS} ${HEADERS_CRYPTO} ${SOURCES_CRYPTO} ${SOURCES_SYSLOG} ${TLS_SOURCES} ${XMRIG_ASM_SOURCES})
 target_link_libraries(${CMAKE_PROJECT_NAME} ${XMRIG_ASM_LIBRARY} ${OPENSSL_LIBRARIES} ${UV_LIBRARIES} ${EXTRA_LIBS} ${CPUID_LIB} ${ARGON2_LIBRARY} ${ETHASH_LIBRARY} ${GHOSTRIDER_LIBRARY})
+
+if (WITH_SALVIUM_TESTS)
+    enable_testing()
+
+    # Pools drags in the full stratum/networking stack, so the donate test is
+    # built from the production sources (minus the miner's main() in
+    # src/xmrig.cpp) instead of a hand-picked subset that would break whenever
+    # a dependency is added.
+    set(DONATE_TEST_SOURCES ${SOURCES} ${SOURCES_OS} ${SOURCES_CRYPTO} ${SOURCES_SYSLOG} ${TLS_SOURCES})
+    list(REMOVE_ITEM DONATE_TEST_SOURCES src/xmrig.cpp)
+
+    add_executable(salvium_donate_tests
+        tests/salvium_donate_tests.cpp
+        ${HEADERS}
+        ${DONATE_TEST_SOURCES}
+        ${HEADERS_CRYPTO}
+        ${XMRIG_ASM_SOURCES}
+        )
+
+    target_link_libraries(salvium_donate_tests ${XMRIG_ASM_LIBRARY} ${OPENSSL_LIBRARIES} ${UV_LIBRARIES} ${EXTRA_LIBS} ${CPUID_LIB} ${ARGON2_LIBRARY} ${ETHASH_LIBRARY} ${GHOSTRIDER_LIBRARY})
+
+    add_test(
+        NAME donation-donate-level-zero
+        COMMAND salvium_donate_tests
+        )
+endif()
 
 if (WIN32)
     if (NOT ARM_TARGET)
