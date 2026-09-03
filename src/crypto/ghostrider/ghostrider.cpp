@@ -60,6 +60,8 @@
 #elif defined(XMRIG_RISCV)
     // RISC-V doesn't have SSE/NEON, provide minimal compatibility
 #   define _mm_pause() __asm__ __volatile__("nop")
+#elif defined(_M_ARM64)
+#   include "crypto/cn/sse2neon.h"
 #elif defined(__GNUC__)
 #   include <x86intrin.h>
 #else

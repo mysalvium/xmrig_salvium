@@ -34,7 +34,7 @@ static const int signums[xmrig::Signals::kSignalsCount] = { SIGHUP, SIGINT, SIGT
 xmrig::Signals::Signals(ISignalListener *listener)
     : m_listener(listener)
 {
-#   ifndef XMRIG_OS_WIN
+#   ifdef SIGPIPE
     signal(SIGPIPE, SIG_IGN);
 #   endif
 

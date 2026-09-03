@@ -1,0 +1,532 @@
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+name: Build and Release
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+
+  # ─── Ubuntu 20.04 (focal) x64 ─────────────────────────────────────
+  build_focal:
+    name: focal-x64
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build inside Ubuntu 20.04 container
+        run: |
+          docker run --rm -v ${{ github.workspace }}:/workspace -w /workspace ubuntu:20.04 /bin/bash -c "
+            set -e
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get update
+            apt-get install -y git build-essential cmake libuv1-dev libssl-dev libhwloc-dev
+            cmake .
+            make -j\$(nproc)
+            cp src/config.json .
+            ./xmrig --version
+            tar cfz focal-x64.tar.gz xmrig config.json LICENSE
+          "
+      - uses: actions/upload-artifact@v6
+        with:
+          name: focal-x64
+          path: focal-x64.tar.gz
+
+  # ─── Ubuntu 22.04 (jammy) x64 ─────────────────────────────────────
+  build_jammy:
+    name: ubuntu22.04-linux-x86_64
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git build-essential cmake libuv1-dev libssl-dev libhwloc-dev
+      - name: Build
+        run: |
+          cmake .
+          make -j$(nproc)
+          cp src/config.json .
+          ./xmrig --version
+          tar cfz ubuntu22.04-linux-x86_64.tar.gz xmrig config.json LICENSE
+      - uses: actions/upload-artifact@v6
+        with:
+          name: ubuntu22.04-linux-x86_64
+          path: ubuntu22.04-linux-x86_64.tar.gz
+
+  # ─── Ubuntu 22.04 (jammy) ARM64 ───────────────────────────────────
+  build_jammy_arm64:
+    name: ubuntu22.04-linux-aarch64
+    runs-on: ubuntu-22.04-arm
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git build-essential cmake libuv1-dev libssl-dev libhwloc-dev
+      - name: Build
+        run: |
+          cmake .
+          make -j$(nproc)
+      - name: Smoke test
+        run: ./xmrig --version
+      - name: Package
+        run: |
+          cp src/config.json .
+          tar cfz ubuntu22.04-linux-aarch64.tar.gz xmrig config.json LICENSE
+      - uses: actions/upload-artifact@v6
+        with:
+          name: ubuntu22.04-linux-aarch64
+          path: ubuntu22.04-linux-aarch64.tar.gz
+
+  # ─── Ubuntu 24.04 (noble) x64 ─────────────────────────────────────
+  build_noble:
+    name: noble-x64
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git build-essential cmake libuv1-dev libssl-dev libhwloc-dev
+      - name: Build
+        run: |
+          cmake .
+          make -j$(nproc)
+          cp src/config.json .
+          ./xmrig --version
+          tar cfz noble-x64.tar.gz xmrig config.json LICENSE
+      - uses: actions/upload-artifact@v6
+        with:
+          name: noble-x64
+          path: noble-x64.tar.gz
+
+  # ─── Linux static x64 (max compatibility) ─────────────────────────
+  build_linux_static:
+    name: linux-static-x64
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build static binary in Docker (Ubuntu 12.04)
+        run: |
+          mkdir -p /tmp/docker
+          cat >/tmp/docker/script.sh <<'SCRIPT'
+          set -ex
+          sed -i -r 's/(archive|security).ubuntu.com/old-releases.ubuntu.com/g' /etc/apt/sources.list
+          apt-get update
+          apt-get install -y python-software-properties
+          add-apt-repository -y ppa:ubuntu-toolchain-r/test
+          apt-get update
+          apt-get install -y git build-essential automake libtool autoconf wget libgmp-dev libmpfr-dev texinfo bison flex gcc-9 g++-9 curl
+          update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-9 60 --slave /usr/bin/g++ g++ /usr/bin/g++-9
+          curl -sSL https://cmake.org/files/v3.27/cmake-3.27.9-linux-x86_64.tar.gz | tar -xzC /opt
+          git clone --depth 1 git://sourceware.org/git/binutils-gdb.git /tmp/binutils-gdb
+          (cd /tmp/binutils-gdb && git checkout binutils-2_38 && CC=gcc ./configure && make -j$(nproc) && make install)
+          cd /workspace
+          (cd scripts && ./build_deps.sh && cd ..)
+          /opt/cmake-3.27.9-linux-x86_64/bin/cmake . -DXMRIG_DEPS=scripts/deps
+          make -j$(nproc)
+          cp src/config.json .
+          ./xmrig --version
+          tar cfz linux-static-x64.tar.gz xmrig config.json LICENSE
+          SCRIPT
+          chmod +x /tmp/docker/script.sh
+          docker run --rm -i -v /tmp/docker:/tmp/docker -v "${{ github.workspace }}":/workspace ubuntu:12.04 /bin/bash /tmp/docker/script.sh
+      - uses: actions/upload-artifact@v6
+        with:
+          name: linux-static-x64
+          path: linux-static-x64.tar.gz
+
+  # ─── FreeBSD static x64 ───────────────────────────────────────────
+  build_freebsd:
+    name: freebsd-static-x64
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build on FreeBSD
+        uses: vmactions/freebsd-vm@v1
+        with:
+          release: "14.0"
+          usesh: true
+          prepare: |
+            pkg install -y cmake git bash wget autoconf automake libtool pkgconf
+          run: |
+            cd scripts && bash build_deps.sh && cd ..
+            cmake . -DXMRIG_DEPS=scripts/deps
+            make -j$(sysctl -n hw.ncpu)
+            cp src/config.json .
+            ./xmrig --version
+            tar cfz freebsd-static-x64.tar.gz xmrig config.json LICENSE
+      - uses: actions/upload-artifact@v6
+        with:
+          name: freebsd-static-x64
+          path: freebsd-static-x64.tar.gz
+
+  # ─── macOS ARM64 ──────────────────────────────────────────────────
+  build_macos_arm64:
+    name: macos-arm64
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install dependencies
+        run: brew install cmake libuv openssl hwloc
+      - name: Build hwloc (static)
+        run: |
+          curl -O https://download.open-mpi.org/release/hwloc/v2.12/hwloc-2.12.1.tar.gz
+          tar xzf hwloc-2.12.1.tar.gz
+          cd hwloc-2.12.1
+          ./configure --disable-shared --enable-static --disable-io --disable-libxml2
+          make -j$(sysctl -n hw.logicalcpu)
+          cd ..
+      - name: Build
+        run: |
+          cmake . -DOPENSSL_ROOT_DIR=$(brew --prefix openssl) \
+                  -DHWLOC_INCLUDE_DIR=hwloc-2.12.1/include \
+                  -DHWLOC_LIBRARY=hwloc-2.12.1/hwloc/.libs/libhwloc.a
+          make -j$(sysctl -n hw.logicalcpu)
+          cp src/config.json .
+      - name: Smoke test
+        run: ./xmrig --version
+      - name: Package
+        run: tar cfz macos-aarch64.tar.gz xmrig config.json LICENSE
+      - uses: actions/upload-artifact@v6
+        with:
+          name: macos-aarch64
+          path: macos-aarch64.tar.gz
+
+  # ─── macOS x64 ────────────────────────────────────────────────────
+  build_macos_x64:
+    name: macos-x86_64
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install dependencies
+        run: brew install cmake hwloc wget automake autoconf libtool
+      - name: Build libuv (static x86_64)
+        run: |
+          UV_VERSION="1.51.0"
+          wget https://dist.libuv.org/dist/v${UV_VERSION}/libuv-v${UV_VERSION}.tar.gz
+          tar xzf libuv-v${UV_VERSION}.tar.gz
+          cd libuv-v${UV_VERSION}
+          sh autogen.sh
+          ./configure --disable-shared --enable-static --host=x86_64-apple-darwin \
+            CC="cc" CFLAGS="-arch x86_64" LDFLAGS="-arch x86_64"
+          make -j$(sysctl -n hw.logicalcpu)
+          cd ..
+      - name: Build hwloc (static)
+        run: |
+          curl -O https://download.open-mpi.org/release/hwloc/v2.12/hwloc-2.12.1.tar.gz
+          tar xzf hwloc-2.12.1.tar.gz
+          cd hwloc-2.12.1
+          ./configure --disable-shared --enable-static --disable-io --disable-libxml2 --host=x86_64-apple-darwin CFLAGS="-arch x86_64" CXXFLAGS="-arch x86_64" LDFLAGS="-arch x86_64"
+          make -j$(sysctl -n hw.logicalcpu)
+          cd ..
+      - name: Build OpenSSL (static x86_64)
+        run: |
+          OPENSSL_VERSION="3.0.16"
+          wget https://github.com/openssl/openssl/releases/download/openssl-${OPENSSL_VERSION}/openssl-${OPENSSL_VERSION}.tar.gz
+          tar xzf openssl-${OPENSSL_VERSION}.tar.gz
+          cd openssl-${OPENSSL_VERSION}
+          ./Configure darwin64-x86_64-cc no-shared no-asm no-zlib no-comp no-dgram no-filenames no-cms
+          make -j$(sysctl -n hw.logicalcpu)
+          cd ..
+      - name: Build
+        run: |
+          cmake . -DCMAKE_OSX_ARCHITECTURES=x86_64 \
+                  -DCMAKE_SYSTEM_NAME=Darwin \
+                  -DCMAKE_SYSTEM_PROCESSOR=x86_64 \
+                  -DOPENSSL_ROOT_DIR=$PWD/openssl-3.0.16 \
+                  -DOPENSSL_INCLUDE_DIR=$PWD/openssl-3.0.16/include \
+                  -DOPENSSL_CRYPTO_LIBRARY=$PWD/openssl-3.0.16/libcrypto.a \
+                  -DHWLOC_INCLUDE_DIR=hwloc-2.12.1/include \
+                  -DHWLOC_LIBRARY=hwloc-2.12.1/hwloc/.libs/libhwloc.a \
+                  -DUV_INCLUDE_DIR=$PWD/libuv-v1.51.0/include \
+                  -DUV_LIBRARY=$PWD/libuv-v1.51.0/.libs/libuv.a
+          make -j$(sysctl -n hw.logicalcpu)
+          cp src/config.json .
+      - name: Smoke test
+        run: ./xmrig --version
+      - name: Package
+        run: tar cfz macos-x86_64.tar.gz xmrig config.json LICENSE
+      - uses: actions/upload-artifact@v6
+        with:
+          name: macos-x86_64
+          path: macos-x86_64.tar.gz
+
+  # ─── Windows x64 (MSVC) ───────────────────────────────────────────
+  build_windows_x64:
+    name: windows-x64
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v6
+      - name: Checkout deps
+        run: git clone https://github.com/xmrig/xmrig-deps.git
+      - name: Build
+        run: |
+          mkdir build
+          cd build
+          cmake .. -G "Visual Studio 17 2022" -A x64 -DXMRIG_DEPS=${{ github.workspace }}/xmrig-deps/msvc2022/x64
+          cmake --build . --config Release
+          cd ..
+      - name: Smoke test
+        run: .\build\Release\xmrig.exe --version
+      - name: Package
+        run: |
+          Copy-Item build\Release\xmrig.exe -Destination .
+          Copy-Item src\config.json -Destination .
+          Copy-Item bin\WinRing0\WinRing0x64.sys -Destination .
+          Copy-Item bin\WinRing0\LICENSE -Destination WinRing0-LICENSE
+          Compress-Archive -Path xmrig.exe, config.json, WinRing0x64.sys, LICENSE, WinRing0-LICENSE -DestinationPath windows-x64.zip
+      - uses: actions/upload-artifact@v6
+        with:
+          name: windows-x64
+          path: windows-x64.zip
+
+  # ─── Windows x64 (GCC / MinGW) ────────────────────────────────────
+  build_windows_gcc:
+    name: windows-gcc-x64
+    runs-on: windows-2022
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >
+            base-devel
+            mingw-w64-ucrt-x86_64-toolchain
+            mingw-w64-ucrt-x86_64-7zip
+            mingw-w64-ucrt-x86_64-cmake
+            git
+      - uses: actions/checkout@v6
+      - name: Checkout deps
+        run: git clone https://github.com/xmrig/xmrig-deps.git
+      - name: Build
+        run: |
+          cmake . -G "Unix Makefiles" -DXMRIG_DEPS=./xmrig-deps/gcc/x64
+          make -j2
+          cp src/config.json .
+          ./xmrig.exe --version
+          cp bin/WinRing0/WinRing0x64.sys .
+          cp bin/WinRing0/LICENSE WinRing0-LICENSE
+          7z a -tzip -mx windows-gcc-x64.zip xmrig.exe config.json WinRing0x64.sys LICENSE WinRing0-LICENSE
+      - uses: actions/upload-artifact@v6
+        with:
+          name: windows-gcc-x64
+          path: windows-gcc-x64.zip
+
+  # ─── Linux ARM64 (aarch64) ──────────────────────────────────────────
+  build_linux_arm64:
+    name: linux-arm64
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git build-essential cmake libuv1-dev libssl-dev libhwloc-dev
+      - name: Build
+        run: |
+          cmake .
+          make -j$(nproc)
+      - name: Smoke test
+        run: ./xmrig --version
+      - name: Package
+        run: |
+          cp src/config.json .
+          tar cfz linux-arm64.tar.gz xmrig config.json LICENSE
+      - uses: actions/upload-artifact@v6
+        with:
+          name: linux-arm64
+          path: linux-arm64.tar.gz
+
+  # ─── Debian 12 (bookworm) x64 ───────────────────────────────────
+  build_debian12:
+    name: debian12-x64
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build inside Debian 12 container
+        run: |
+          docker run --rm -v ${{ github.workspace }}:/workspace -w /workspace debian:12 /bin/bash -c "
+            set -e
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get update
+            apt-get install -y build-essential cmake libuv1-dev libssl-dev libhwloc-dev
+            cmake .
+            make -j\$(nproc)
+            cp src/config.json .
+            ./xmrig --version
+            tar cfz debian12-x64.tar.gz xmrig config.json LICENSE
+          "
+      - uses: actions/upload-artifact@v6
+        with:
+          name: debian12-x64
+          path: debian12-x64.tar.gz
+
+  # ─── Alpine Linux x64 (musl) ────────────────────────────────────
+  build_alpine:
+    name: alpine-x64
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build inside Alpine container
+        run: |
+          docker run --rm -v ${{ github.workspace }}:/workspace -w /workspace alpine:3.21 /bin/sh -c "
+            set -e
+            apk add --no-cache build-base cmake openssl-dev openssl-libs-static libuv-dev libuv-static linux-headers
+            cmake . -DBUILD_STATIC=ON -DWITH_HWLOC=OFF
+            make -j\$(nproc)
+            cp src/config.json .
+            ./xmrig --version
+            tar cfz alpine-x64.tar.gz xmrig config.json LICENSE
+          "
+      - uses: actions/upload-artifact@v6
+        with:
+          name: alpine-x64
+          path: alpine-x64.tar.gz
+
+  # ─── Rocky Linux 9 x64 (RHEL 9) ────────────────────────────────
+  build_rocky9:
+    name: rocky9-x64
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build inside Rocky Linux 9 container
+        run: |
+          docker run --rm -v ${{ github.workspace }}:/workspace -w /workspace rockylinux:9 /bin/bash -c "
+            set -e
+            dnf install -y epel-release dnf-plugins-core
+            dnf config-manager --set-enabled crb
+            dnf install -y gcc gcc-c++ make cmake openssl-devel hwloc-devel wget automake libtool autoconf libstdc++-static diffutils file
+            # Build libuv from source
+            UV_VERSION=1.51.0
+            wget https://dist.libuv.org/dist/v\${UV_VERSION}/libuv-v\${UV_VERSION}.tar.gz
+            tar xzf libuv-v\${UV_VERSION}.tar.gz
+            cd libuv-v\${UV_VERSION}
+            sh autogen.sh
+            ./configure --disable-shared
+            make -j\$(nproc)
+            make install
+            cd /workspace
+            cmake . -DCMAKE_PREFIX_PATH=/usr/local
+            make -j\$(nproc)
+            cp src/config.json .
+            ./xmrig --version
+            tar cfz rocky9-x64.tar.gz xmrig config.json LICENSE
+          "
+      - uses: actions/upload-artifact@v6
+        with:
+          name: rocky9-x64
+          path: rocky9-x64.tar.gz
+
+  # ─── openSUSE Leap x64 ──────────────────────────────────────────
+  build_opensuse:
+    name: opensuse-x64
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build inside openSUSE Leap container
+        run: |
+          docker run --rm -v ${{ github.workspace }}:/workspace -w /workspace opensuse/leap:15.6 /bin/bash -c "
+            set -e
+            zypper --non-interactive install gcc gcc-c++ make cmake tar gzip libopenssl-devel libuv-devel hwloc-devel
+            cmake .
+            make -j\$(nproc)
+            cp src/config.json .
+            ./xmrig --version
+            tar cfz opensuse-x64.tar.gz xmrig config.json LICENSE
+          "
+      - uses: actions/upload-artifact@v6
+        with:
+          name: opensuse-x64
+          path: opensuse-x64.tar.gz
+
+  # ─── Release ───────────────────────────────────────────────────────
+  release:
+    name: Create Release
+    needs:
+      - build_focal
+      - build_jammy
+      - build_noble
+      - build_linux_static
+      - build_freebsd
+      - build_macos_arm64
+      - build_macos_x64
+      - build_windows_x64
+      - build_windows_gcc
+      - build_linux_arm64
+
+      - build_jammy_arm64
+      - build_debian12
+      - build_alpine
+      - build_rocky9
+      - build_opensuse
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+      - name: Download all artifacts
+        uses: actions/download-artifact@v7
+        with:
+          path: artifacts
+
+      - name: Rename artifacts to release names
+        run: |
+          VERSION=${GITHUB_REF_NAME}
+          mkdir -p release
+          cp artifacts/focal-x64/focal-x64.tar.gz                   release/xmrig-${VERSION}-focal-x64.tar.gz
+          cp artifacts/ubuntu22.04-linux-x86_64/ubuntu22.04-linux-x86_64.tar.gz   release/xmrig-${VERSION}-ubuntu22.04-linux-x86_64.tar.gz
+          cp artifacts/noble-x64/noble-x64.tar.gz                   release/xmrig-${VERSION}-noble-x64.tar.gz
+          cp artifacts/linux-static-x64/linux-static-x64.tar.gz     release/xmrig-${VERSION}-linux-static-x64.tar.gz
+          cp artifacts/freebsd-static-x64/freebsd-static-x64.tar.gz release/xmrig-${VERSION}-freebsd-static-x64.tar.gz
+          cp artifacts/macos-aarch64/macos-aarch64.tar.gz                          release/xmrig-${VERSION}-macos-aarch64.tar.gz
+          cp artifacts/macos-x86_64/macos-x86_64.tar.gz                           release/xmrig-${VERSION}-macos-x86_64.tar.gz
+          cp artifacts/windows-x64/windows-x64.zip                  release/xmrig-${VERSION}-windows-x64.zip
+          cp artifacts/windows-gcc-x64/windows-gcc-x64.zip          release/xmrig-${VERSION}-windows-gcc-x64.zip
+          cp artifacts/linux-arm64/linux-arm64.tar.gz                 release/xmrig-${VERSION}-linux-arm64.tar.gz
+
+          cp artifacts/ubuntu22.04-linux-aarch64/ubuntu22.04-linux-aarch64.tar.gz  release/xmrig-${VERSION}-ubuntu22.04-linux-aarch64.tar.gz
+          cp artifacts/debian12-x64/debian12-x64.tar.gz              release/xmrig-${VERSION}-debian12-x64.tar.gz
+          cp artifacts/alpine-x64/alpine-x64.tar.gz                  release/xmrig-${VERSION}-alpine-x64.tar.gz
+          cp artifacts/rocky9-x64/rocky9-x64.tar.gz                  release/xmrig-${VERSION}-rocky9-x64.tar.gz
+          cp artifacts/opensuse-x64/opensuse-x64.tar.gz              release/xmrig-${VERSION}-opensuse-x64.tar.gz
+
+      - name: Generate checksums
+        run: |
+          cd release
+          sha256sum * > SHA256SUMS
+          cat SHA256SUMS
+          echo '## SHA256 Checksums' > ../RELEASE_NOTES.md
+          echo '' >> ../RELEASE_NOTES.md
+          echo '| File | SHA256 |' >> ../RELEASE_NOTES.md
+          echo '|------|--------|' >> ../RELEASE_NOTES.md
+          while read -r hash file; do
+            echo "| \`${file}\` | \`${hash}\` |" >> ../RELEASE_NOTES.md
+          done < SHA256SUMS
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release edit "$GITHUB_REF_NAME" --notes-file RELEASE_NOTES.md
+            gh release upload "$GITHUB_REF_NAME" release/* --clobber
+          else
+            if [[ "$GITHUB_REF_NAME" == *-* ]]; then
+              gh release create "$GITHUB_REF_NAME" release/* --generate-notes --notes-file RELEASE_NOTES.md --prerelease
+            else
+              gh release create "$GITHUB_REF_NAME" release/* --generate-notes --notes-file RELEASE_NOTES.md
+            fi
+          fi

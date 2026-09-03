@@ -169,6 +169,8 @@ if (NOT ARM_TARGET)
         set(ARM_TARGET 8)
     elseif (CMAKE_SYSTEM_PROCESSOR MATCHES "^(armv7|armv7f|armv7s|armv7k|armv7-a|armv7l|armv7ve|armv8l)$")
         set(ARM_TARGET 7)
+    elseif (CMAKE_GENERATOR_PLATFORM STREQUAL "ARM64")
+        set(ARM_TARGET 8)
     endif()
 endif()
 

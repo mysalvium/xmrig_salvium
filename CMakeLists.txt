@@ -189,6 +189,8 @@ else()
         set(EXTRA_LIBS pthread rt dl)
     elseif (XMRIG_OS_FREEBSD)
         set(EXTRA_LIBS kvm pthread)
+    elseif (XMRIG_OS_OPENBSD)
+        set(EXTRA_LIBS kvm pthread)
     endif()
 endif()
 

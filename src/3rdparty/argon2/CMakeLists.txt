@@ -19,7 +19,7 @@ set(ARGON2_X86_64_ENABLED ON)
 set(ARGON2_X86_64_LIBS    argon2-sse2 argon2-ssse3 argon2-xop argon2-avx2 argon2-avx512f)
 set(ARGON2_X86_64_SOURCES arch/x86_64/lib/argon2-arch.c)
 
-if (CMAKE_C_COMPILER_ID MATCHES MSVC)
+if (CMAKE_C_COMPILER_ID MATCHES MSVC AND NOT XMRIG_ARM)
     function(add_feature_impl FEATURE MSVC_FLAG DEF)
         add_library(argon2-${FEATURE} STATIC arch/x86_64/lib/argon2-${FEATURE}.c)
         target_include_directories(argon2-${FEATURE} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../)
