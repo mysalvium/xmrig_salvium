@@ -67,6 +67,31 @@ is_donation_bearing_commit()
     return 1
 }
 
+contains_legacy_personal_identity()
+{
+    local_sha=$1
+    remote_sha=$2
+
+    if [ "$remote_sha" = "$zero_sha" ] ||
+       ! git cat-file -e "$remote_sha^{commit}" 2>/dev/null; then
+        revision_range=$local_sha
+    else
+        revision_range=$remote_sha..$local_sha
+    fi
+
+    for commit in $(git rev-list "$revision_range"); do
+        identity=$(git show -s --format='%an <%ae>%n%cn <%ce>' "$commit" |
+            tr '[:upper:]' '[:lower:]')
+        case "$identity" in
+            *trevorwilf*|*trevor\ wilford*|*trevor@nerdline.com*)
+                return 0
+                ;;
+        esac
+    done
+
+    return 1
+}
+
 if [ "$remote_name" = "upstream" ] || is_official_upstream_url; then
     cat >&2 <<EOF
 REJECTED: direct pushes to xmrig/xmrig are disabled in this repository.
@@ -84,6 +109,18 @@ fi
 while read -r local_ref local_sha remote_ref remote_sha; do
     if [ "$local_sha" = "$zero_sha" ]; then
         continue
+    fi
+
+    if contains_legacy_personal_identity "$local_sha" "$remote_sha"; then
+        cat >&2 <<EOF
+REJECTED: this push contains legacy personal commit identity metadata.
+Local ref:  $local_ref
+Remote ref: $remote_ref
+
+Recreate the intended change on a clean mysalvium branch instead of pushing
+the legacy history.
+EOF
+        exit 1
     fi
 
     if ! is_trusted_origin_url && is_donation_bearing_commit "$local_sha"; then
