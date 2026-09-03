@@ -417,8 +417,13 @@ jobs:
           docker run --rm -v ${{ github.workspace }}:/workspace -w /workspace alpine:3.21 /bin/sh -c "
             set -e
             apk add --no-cache build-base cmake openssl-dev openssl-libs-static libuv-dev libuv-static linux-headers
-            cmake . -DBUILD_STATIC=ON -DWITH_HWLOC=OFF
+            # Alpine ships no static hwloc archive, so build libhwloc.a from
+            # source (same as linux-static-x64) to keep hwloc ON in the
+            # static musl artifact: NUMA/topology-aware auto-config matters.
+            (cd scripts && ./build.hwloc.sh)
+            cmake . -DBUILD_STATIC=ON -DXMRIG_DEPS=scripts/deps
             make -j\$(nproc)
+            ./xmrig --version | grep 'hwloc/'
             cp src/config.json .
             cp scripts/tune-salvium-randomx.sh .
             cp docs/SALVIUM_RANDOMX_TUNER_LINUX.md .

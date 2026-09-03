@@ -34,7 +34,7 @@ elseif (CMAKE_SYSTEM_PROCESSOR MATCHES "^(riscv32|rv32)$")
     message(STATUS "Detected RISC-V 32-bit architecture (${CMAKE_SYSTEM_PROCESSOR})")
 endif()
 
-if (XMRIG_64_BIT AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64)$")
+if (XMRIG_64_BIT AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64|AMD64)$")
     add_definitions(-DRAPIDJSON_SSE2)
 else()
     set(WITH_SSE4_1 OFF)

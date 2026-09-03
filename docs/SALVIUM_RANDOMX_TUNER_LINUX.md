@@ -127,6 +127,7 @@ Each run directory contains:
 - `measurements.tsv`;
 - `measurements.csv`;
 - `rankings.tsv`;
+- `run-manifest.json`;
 - `report.md`;
 - `recommended-settings.json`.
 
@@ -206,8 +207,76 @@ affinities, and repeats the final leaders twice:
   --preset thorough
 ```
 
-Override the preset size with `--benchmark-size`. Supported XMRig release
-sizes are `250K`, `500K`, and `1M` through `10M`.
+Rigorous is the high-confidence option for choosing among close results after
+a Standard or Thorough run:
+
+```bash
+./tune-salvium-randomx.sh \
+  --xmrig ./xmrig \
+  --preset rigorous \
+  --max-cpu-temperature 80
+```
+
+It runs this automatic experiment:
+
+1. Randomize all affinity candidates and measure each twice at 500K hashes.
+2. Re-run a fixed reference candidate at the start, end, and after every five
+   screening measurements so environmental drift is visible.
+3. Keep candidates within two percent of each stage leader, capped at four
+   survivors.
+4. Test all four prefetch modes on every surviving affinity at 1M hashes.
+5. Test all yield and JIT-huge-page combinations across the surviving
+   affinity/prefetch configurations at 2M hashes.
+6. Randomize up to three finalists and measure each three times at 5M hashes.
+   Only these final measurements determine the Rigorous recommendation.
+
+Rigorous also adds efficient-core-only, partial-performance-core, and
+cache-boundary affinities. The wider search can find a cooler sustained
+configuration that a maximum-hashrate-only progression would miss. Use
+`--explore-thermal-affinities` to add those profile families to another
+preset.
+
+`--plan-only --preset rigorous` prints the generated profiles, stage policy,
+and an approximate maximum run count. The actual count can be lower because
+the survivor beam is adaptive. A real Rigorous run can take hours, especially
+with temperature-conditioned cooldowns.
+
+The main Rigorous controls are:
+
+- `--screening-benchmark-size`, `--refinement-benchmark-size`, and
+  `--final-benchmark-size`;
+- `--screening-repeats` and `--final-confirmation-runs`;
+- `--advance-within-percent` and `--maximum-survivors`;
+- `--reference-interval`, where zero keeps only start and end anchors; and
+- `--candidate-order-seed`, where zero generates and records a seed.
+
+Supported XMRig release sizes are `250K`, `500K`, and `1M` through `10M`. For
+Quick, Standard, or Thorough, `--benchmark-size` overrides the preset size.
+In Rigorous mode, explicitly setting `--benchmark-size` makes that value the
+default for all stages; any explicitly supplied stage-specific size overrides
+it.
+
+### Resume an interrupted Rigorous run
+
+Every run records the exact experiment in `run-manifest.json`. Resume with the
+same XMRig executable and topology scope:
+
+```bash
+./tune-salvium-randomx.sh \
+  --xmrig ./xmrig \
+  --resume-directory "$HOME/.local/state/xmrig-salvium-tuner/runs/20260726-193000"
+```
+
+The manifest restores the stage sizes, seed, survivor controls, and SMT and
+thermal-affinity choices. Completed stage/configuration/size measurements are
+reused, so immediately resuming a completed run launches no new benchmarks.
+
+Resume deliberately fails when the tuner script, XMRig binary, baseline
+configuration, CPU topology, or generated affinity profiles differ from the
+manifest. Repeat any original `--baseline-config`, `--allowed-cpus`, manual
+topology, sysfs-root, and temperature options so the same environment can be
+verified. This prevents measurements from different experiments being
+silently combined.
 
 ## CPU temperature monitoring and enforcement
 
@@ -241,7 +310,11 @@ candidate can win:
 Every candidate receives a live temperature CSV with UTC timestamps and
 Celsius values. The measurement and ranking reports include mean,
 95th-percentile, and maximum temperature. Monitor-only temperatures do not
-alter the hashrate ranking.
+alter the hashrate ranking. Measurements also include first/final-quarter
+means and a fitted temperature slope in degrees Celsius per minute. A
+positive slope at the end of a short benchmark suggests that the candidate
+may not yet have reached thermal equilibrium; it is not itself a
+disqualification.
 
 If auto-detection chooses the wrong package or die, provide the exact hwmon
 input:
@@ -325,6 +398,11 @@ Temperature enforcement finds a continuously compliant configuration. It
 does not switch dynamically between hot and cool configurations during
 production mining.
 
+With temperature enforcement enabled, a Rigorous finalist is eligible only
+when every final confirmation completed below the ceiling. The script never
+changes affinity during a candidate, raises the ceiling to obtain a result,
+or applies a production-time thermal governor.
+
 ## Manual topology
 
 When firmware, virtualization, CPU hotplug, or a kernel configuration hides
@@ -360,6 +438,26 @@ The final report ranks successful, temperature-compliant configurations by
 median hash rate and uses the mean as a secondary key. Temperature-disabled
 and monitor-only runs retain the existing hashrate-only ordering.
 
+Before a measurement can rank, the tuner verifies that XMRig reported
+`rx/0`, created the requested number of workers, obtained 100-percent worker
+and dataset huge pages when expected, completed the benchmark, and returned
+a hash sum consistent with the other measurements. A contract failure is
+retained in the raw measurements with an explanation but cannot win.
+
+Repeated rankings include sample count, standard deviation, median absolute
+deviation, coefficient of variation, and an approximate 95-percent
+mean-confidence half-width. They also include the median observed 60-second
+rate when XMRig emitted enough live speed records, plus temperature slope
+when monitoring was enabled. These diagnostics can expose a fast but
+unstable result; a few offline measurements still do not prove long-term
+pool performance.
+
+Rigorous reports reference-candidate drift and warns above two percent. When
+the leading finalists differ by less than one percent, the report labels them
+practically tied and the recommendation records alternatives within one
+percent. Prefer the cooler, more stable, or more responsive configuration
+when the measured rates are effectively tied.
+
 Before changing the production miner:
 
 1. Prefer repeated measurements over a single maximum.
@@ -390,13 +488,16 @@ candidate generation remains intentionally conservative:
 The script is Linux-only. Use `tune-salvium-randomx.ps1` and the Windows guide
 on Windows.
 
-## Regression test
+## Regression tests
 
-The lightweight test uses a mock XMRig process and fake `coretemp` hwmon tree
-to verify disabled, monitor-only, compliant, thermally limited, cooldown,
-sensor-failure, report, and owned-child-cleanup behavior without running
-RandomX:
+The lightweight tests use a mock XMRig process and fake Linux topology/sensor
+trees. The first verifies disabled, monitor-only, compliant, thermally
+limited, cooldown, sensor-failure, report, and owned-child cleanup. The
+second verifies the randomized Rigorous stages, survivor refinement,
+repeated finalists, benchmark-contract rejection, statistical output,
+manifest integrity, and a resume that launches no duplicate work:
 
 ```bash
 bash tests/test_salvium_tuner_temperature.sh
+bash tests/test_salvium_tuner_rigorous.sh
 ```

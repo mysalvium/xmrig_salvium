@@ -139,6 +139,9 @@ benchmark controller can compare P-core/E-core affinities, RandomX scratchpad
 prefetch modes, CPU yield behavior, and JIT huge pages without changing the
 production miner configuration. It uses offline `rx/0` benchmarks, disables
 networking and MSR access, and writes a ranked report outside the repository.
+Its Rigorous preset adds temperature-aware affinity exploration,
+deterministically randomized repeated measurements, benchmark-validity
+checks, reference drift, statistical diagnostics, and resumable manifests.
 Read the [Windows tuner guide](docs/SALVIUM_RANDOMX_TUNER.md) and run its
 plan-only or smoke-test mode before starting a complete session.
 
@@ -146,7 +149,8 @@ Linux releases include the native Bash
 [`scripts/tune-salvium-randomx.sh`](scripts/tune-salvium-randomx.sh)
 controller. It respects online and cgroup-allowed CPUs, reads physical-core,
 SMT, hybrid-class, and shared-L3 topology from Linux sysfs, and provides the
-same staged offline tuning and credential isolation. Read the
+same staged offline tuning, temperature ceiling, Rigorous experiment, resume
+support, and credential isolation. Read the
 [Linux tuner guide](docs/SALVIUM_RANDOMX_TUNER_LINUX.md) before running it.
 
 For More information on Salvium:

@@ -7,8 +7,8 @@ CPU hashing path with XMRig's offline benchmark.
 
 The tuner is most useful on hybrid processors such as Intel Core CPUs with
 performance and efficient cores. It reads Windows CPU-set `EfficiencyClass`
-data, creates cache-conscious affinity candidates, and narrows the search in
-four stages:
+data and creates cache-conscious affinity candidates. Quick, Standard, and
+Thorough narrow the search in four stages:
 
 1. Compare performance-core and performance-plus-efficient-core profiles.
 2. Test scratchpad prefetch modes 0 through 3 on the leading profiles.
@@ -46,8 +46,8 @@ The default output location is:
 
 Each run directory contains raw standard-output and standard-error logs,
 incrementally updated `measurements.csv` and `measurements.json`, `report.md`,
-and a
-`recommended-settings.json` fragment containing no pool configuration. The
+`run-manifest.json`, and a `recommended-settings.json` fragment containing no
+pool configuration. The
 fragment separates measured recommendations from settings that were merely
 held constant; it does not recommend disabling MSR in the production miner.
 XMRig writes its raw log incrementally, so the standard-output log grows
@@ -159,8 +159,78 @@ profiles, and performs two additional confirmations:
     -Preset Thorough
 ```
 
-Override the preset size with `-BenchmarkSize`. XMRig release builds accept
-`250K`, `500K`, and `1M` through `10M`.
+Rigorous is the high-confidence option. It takes substantially longer and is
+intended for choosing among close results after a Standard or Thorough run:
+
+```powershell
+.\scripts\tune-salvium-randomx.ps1 `
+    -XmrigPath E:\xmrig-6.25.0\xmrig.exe `
+    -Preset Rigorous `
+    -MaxCpuTemperatureC 80
+```
+
+Its automatic experiment is:
+
+1. Randomize all affinity candidates and measure each twice at 500K hashes.
+2. Re-run a fixed reference candidate at the start, end, and after every five
+   screening measurements so environmental drift is visible.
+3. Keep candidates within two percent of each stage leader, capped at four
+   survivors.
+4. Test all four prefetch modes on every surviving affinity at 1M hashes.
+5. Test all yield and JIT-huge-page combinations across the surviving
+   affinity/prefetch configurations at 2M hashes.
+6. Randomize up to three finalists and measure each three times at 5M hashes.
+   Only these final measurements determine the Rigorous recommendation.
+
+Rigorous also adds efficient-core-only, partial-P-core, and cache-boundary
+affinities. This wider search can find a cooler sustained configuration that
+a maximum-hashrate-only P-core progression would miss. Use
+`-ExploreThermalAffinities` to add the same profile families to another
+preset.
+
+`-PlanOnly -Preset Rigorous` prints the generated profiles, stage policy, and
+an approximate maximum run count. The actual count can be lower because the
+survivor beam is adaptive. On a hybrid desktop, expect a real Rigorous run to
+take hours rather than minutes, especially with temperature-conditioned
+cooldowns.
+
+The main Rigorous controls are:
+
+- `-ScreeningBenchmarkSize`, `-RefinementBenchmarkSize`, and
+  `-FinalBenchmarkSize`;
+- `-ScreeningRepeats` and `-FinalConfirmationRuns`;
+- `-AdvanceWithinPercent` and `-MaximumSurvivors`;
+- `-ReferenceInterval`, where zero keeps only start and end anchors; and
+- `-CandidateOrderSeed`, where zero generates and records a seed.
+
+XMRig release builds accept `250K`, `500K`, and `1M` through `10M`. For Quick,
+Standard, or Thorough, `-BenchmarkSize` overrides the preset size. In Rigorous
+mode, explicitly setting `-BenchmarkSize` makes that value the default for
+all stages; any explicitly supplied stage-specific size overrides it.
+
+### Resume an interrupted Rigorous run
+
+Every run records the exact experiment in `run-manifest.json`. Resume with the
+same XMRig executable:
+
+```powershell
+.\scripts\tune-salvium-randomx.ps1 `
+    -XmrigPath E:\xmrig-6.25.0\xmrig.exe `
+    -ResumeDirectory "$env:LOCALAPPDATA\XmrigSalviumTuner\Runs\20260726-193000"
+```
+
+Windows restores the recorded stage sizes, seed, survivor controls, SMT and
+thermal-affinity choices, sensor-based temperature policy, and cooldown
+settings. Completed stage/configuration/size measurements are reused, so an
+immediately resumed completed run launches no new benchmarks.
+
+Resume deliberately fails when the tuner script, XMRig binary, baseline
+configuration, CPU topology, or generated affinity profiles differ from the
+manifest. This prevents measurements from different experiments being
+silently combined. If the original run used a baseline configuration that is
+not adjacent to XMRig, supply the same `-BaselineConfigPath`. If it used
+`-TemperatureCommand`, repeat that command; the manifest stores only its
+SHA-256 fingerprint and never replays command text from the result directory.
 
 ## CPU temperature monitoring and enforcement
 
@@ -231,7 +301,10 @@ ranking:
 
 Every candidate receives a live
 `<sequence>-<candidate>.temperature.csv` containing UTC timestamps and Celsius
-values.
+values. The measurement record also includes the first/final-quarter mean and
+the fitted temperature slope in degrees Celsius per minute. A positive slope
+at the end of a short benchmark is evidence that the candidate may not yet
+have reached thermal equilibrium; it is not itself a disqualification.
 
 ### Enforce a maximum temperature
 
@@ -289,6 +362,12 @@ This feature discovers a continuously compliant configuration. It does not
 dynamically switch between hot and cool mining configurations during
 production operation.
 
+With temperature enforcement enabled, a Rigorous finalist is eligible only
+when every one of its final confirmation measurements completed below the
+ceiling. The script never changes affinity during a candidate, never raises
+the ceiling to obtain a result, and never applies a production-time thermal
+governor.
+
 ## CPU topology overrides
 
 Windows normally reports a higher `EfficiencyClass` for performance cores.
@@ -315,6 +394,27 @@ hash rate and uses mean hash rate as a secondary key. In monitor-only or
 temperature-disabled mode, temperature does not change that ordering. The
 recommendation is not applied automatically.
 
+Before a measurement can rank, the tuner verifies that XMRig reported
+`rx/0`, created the requested number of workers, obtained 100-percent worker
+and dataset huge pages when the candidate expected them, completed the
+benchmark, and returned a hash sum consistent with the other measurements.
+A contract failure is retained in the raw measurements with an explanation
+but cannot win.
+
+Repeated rankings include sample count, standard deviation, median absolute
+deviation, coefficient of variation, and an approximate 95-percent
+mean-confidence half-width. They also include the median observed 60-second
+rate when XMRig emitted enough live speed records, plus temperature slope
+when monitoring was enabled. These diagnostics help identify a fast but
+unstable result. They do not turn three measurements into proof of long-term
+pool performance.
+
+Rigorous reports reference-candidate drift and warns above two percent. When
+the leading finalists differ by less than one percent, the report labels them
+practically tied and the recommendation records alternatives within one
+percent. In that case, prefer the cooler, more stable, or more responsive
+configuration rather than treating the displayed ordering as decisive.
+
 Before changing the production miner:
 
 1. Prefer repeated results over a single maximum.
@@ -333,13 +433,19 @@ MSR access is intentionally outside this experiment. If MSR modification
 later becomes available under a separate non-hypervisor boot, rerun or
 validate the winning affinity there as a separate comparison.
 
-## Regression test
+## Regression tests
 
-The lightweight test compiles a mock XMRig executable and verifies disabled,
-monitor-only, compliant, thermally limited, cooldown, sensor-failure, report,
-and owned-child-cleanup behavior without running RandomX:
+The lightweight tests compile a mock XMRig executable. The first verifies
+disabled, monitor-only, compliant, thermally limited, cooldown,
+sensor-failure, report, and owned-child-cleanup behavior. The second verifies
+the randomized Rigorous stages, survivor refinement, repeated finalists,
+benchmark-contract rejection, statistical output, manifest integrity, and a
+resume that launches no duplicate work:
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass `
     -File .\tests\test_salvium_tuner_temperature.ps1
+
+powershell.exe -NoProfile -ExecutionPolicy Bypass `
+    -File .\tests\test_salvium_tuner_rigorous.ps1
 ```
