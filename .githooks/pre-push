@@ -67,26 +67,21 @@ is_donation_bearing_commit()
     return 1
 }
 
-contains_legacy_personal_identity()
+is_clean_history_descendant()
 {
-    local_sha=$1
-    remote_sha=$2
+    object=$1
+    commit=$(git rev-parse "$object^{}" 2>/dev/null) || return 1
 
-    if [ "$remote_sha" = "$zero_sha" ] ||
-       ! git cat-file -e "$remote_sha^{commit}" 2>/dev/null; then
-        revision_range=$local_sha
-    else
-        revision_range=$remote_sha..$local_sha
-    fi
-
-    for commit in $(git rev-list "$revision_range"); do
-        identity=$(git show -s --format='%an <%ae>%n%cn <%ce>' "$commit" |
-            tr '[:upper:]' '[:lower:]')
-        case "$identity" in
-            *trevorwilf*|*trevor\ wilford*|*trevor@nerdline.com*)
-                return 0
-                ;;
-        esac
+    for clean_ref in \
+        refs/remotes/origin/stock \
+        refs/remotes/origin/salvium \
+        refs/remotes/origin/donation \
+        refs/remotes/origin/combined
+    do
+        if git show-ref --verify --quiet "$clean_ref" &&
+           git merge-base --is-ancestor "$clean_ref" "$commit"; then
+            return 0
+        fi
     done
 
     return 1
@@ -111,14 +106,24 @@ while read -r local_ref local_sha remote_ref remote_sha; do
         continue
     fi
 
-    if contains_legacy_personal_identity "$local_sha" "$remote_sha"; then
+    if [ "$remote_sha" != "$zero_sha" ] &&
+       ! git merge-base --is-ancestor "$remote_sha^{}" "$local_sha^{}"; then
         cat >&2 <<EOF
-REJECTED: this push contains legacy personal commit identity metadata.
+REJECTED: non-fast-forward history replacement is disabled.
+Local ref:  $local_ref
+Remote ref: $remote_ref
+EOF
+        exit 1
+    fi
+
+    if [ "$remote_sha" = "$zero_sha" ] &&
+       ! is_clean_history_descendant "$local_sha"; then
+        cat >&2 <<EOF
+REJECTED: new refs must descend from a clean origin branch.
 Local ref:  $local_ref
 Remote ref: $remote_ref
 
-Recreate the intended change on a clean mysalvium branch instead of pushing
-the legacy history.
+Recreate the intended change on a branch based on the current origin history.
 EOF
         exit 1
     fi
