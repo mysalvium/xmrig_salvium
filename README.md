@@ -1,8 +1,60 @@
-# XMRig w/ Salvium Support
+# XMRig with Salvium Support
 
-Note about this project.  This is specifically for people that are trying to mine Salvium.  I am not rigourously testing this against other coins.  I mean, it **should** work, but I am only worried about XMR and SAL.
+**Community-maintained XMRig builds for mining Salvium (SAL) and Monero
+(XMR), with precompiled binaries for Windows, Linux, macOS, FreeBSD, x86-64,
+and ARM64.**
 
-If Salvium is not a coin you are interested in, I suggest you head to the official [XMRig repository](https://github.com/xmrig/xmrig). It works great for everything else.
+This repository provides Salvium mining support alongside a broad collection
+of ready-to-run XMRig binaries—including builds for operating systems and
+architectures that can be difficult to find elsewhere.
+
+[Download the latest release](https://github.com/mysalvium/xmrig_salvium/releases/latest) ·
+[View all releases](https://github.com/mysalvium/xmrig_salvium/releases) ·
+[Build from source](https://xmrig.com/docs/miner/build)
+
+## Precompiled XMRig downloads
+
+Each release includes SHA-256 checksums and binaries for many supported
+platforms.
+
+| Platform | Architecture | Available builds |
+|---|---:|---|
+| Windows | x86-64 | Microsoft Visual C++ and GCC |
+| Ubuntu | x86-64 | Ubuntu 20.04, 22.04, and 24.04 |
+| Debian | x86-64 | Debian 12 |
+| Alpine Linux | x86-64 | musl-compatible build |
+| Rocky Linux | x86-64 | Rocky Linux 9 |
+| openSUSE | x86-64 | Native Linux build |
+| Linux | x86-64 | Portable static build |
+| Linux | ARM64 | AArch64 build |
+| FreeBSD | x86-64 | Static build |
+| macOS | x86-64 | Intel Mac |
+| macOS | ARM64 | Apple Silicon |
+
+**Looking for a Salvium miner for ARM64, Alpine Linux, FreeBSD, Apple Silicon,
+or another less-common platform?** Check the
+[latest release](https://github.com/mysalvium/xmrig_salvium/releases/latest)
+before compiling XMRig yourself.
+
+## Why this repository?
+
+- Native support for mining **Salvium (SAL)**
+- Continued support for **Monero (XMR)**
+- Precompiled XMRig binaries for a wide range of platforms
+- Separate Windows, Linux, macOS, FreeBSD, x86-64, and ARM64 packages
+- SHA-256 checksums for verifying downloaded files
+- Source code and tagged releases corresponding to published binaries
+
+## Quick start
+
+1. Download the appropriate package from the
+   [latest release](https://github.com/mysalvium/xmrig_salvium/releases/latest).
+2. Extract the archive.
+3. Configure your Salvium or Monero mining pool.
+4. Start XMRig using the configuration examples below.
+
+> This is an independent, community-maintained XMRig variant and is not an
+> official Salvium or upstream XMRig release.
 
 ## Repository variants
 
@@ -158,14 +210,7 @@ For More information on Salvium:
 - P2Pool Salvium Info: [https://whiskymine.io/p2pool-setup.html](https://whiskymine.io/p2pool-setup.html)
 - P2Pool Salvium Fork: [https://gitlab.com/whiskyrelaxing-group/p2pool-salvium-releases](https://gitlab.com/whiskyrelaxing-group/p2pool-salvium-releases)
 
-## Original Readme
-
-[![Github All Releases](https://img.shields.io/github/downloads/xmrig/xmrig/total.svg)](https://github.com/xmrig/xmrig/releases)
-[![GitHub release](https://img.shields.io/github/release/xmrig/xmrig/all.svg)](https://github.com/xmrig/xmrig/releases)
-[![GitHub Release Date](https://img.shields.io/github/release-date/xmrig/xmrig.svg)](https://github.com/xmrig/xmrig/releases)
-[![GitHub license](https://img.shields.io/github/license/xmrig/xmrig.svg)](https://github.com/xmrig/xmrig/blob/master/LICENSE)
-[![GitHub stars](https://img.shields.io/github/stars/xmrig/xmrig.svg)](https://github.com/xmrig/xmrig/stargazers)
-[![GitHub forks](https://img.shields.io/github/forks/xmrig/xmrig.svg)](https://github.com/xmrig/xmrig/network)
+## About upstream XMRig
 
 XMRig is a high performance, open source, cross platform RandomX, KawPow, CryptoNight and [GhostRider](https://github.com/xmrig/xmrig/tree/master/src/crypto/ghostrider#readme) unified CPU/GPU miner and [RandomX benchmark](https://xmrig.com/benchmark). Official binaries are available for Windows, Linux, macOS and FreeBSD.
 
@@ -175,11 +220,8 @@ XMRig is a high performance, open source, cross platform RandomX, KawPow, Crypto
 - **OpenCL** for AMD GPUs.
 - **CUDA** for NVIDIA GPUs via external [CUDA plugin](https://github.com/xmrig/xmrig-cuda).
 
-## Download
-
-* **[Salvium-enabled binary releases](https://github.com/mysalvium/xmrig_salvium/releases)**
-* **[Official stock XMRig releases](https://github.com/xmrig/xmrig/releases)**
-* **[Build from source](https://xmrig.com/docs/miner/build)**
+For stock XMRig releases and documentation, visit the
+[official XMRig repository](https://github.com/xmrig/xmrig).
 
 ## Usage
 
