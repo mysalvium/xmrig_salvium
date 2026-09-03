@@ -21,6 +21,7 @@
 
 
 #include "base/crypto/Algorithm.h"
+#include "base/net/stratum/SoloEffort.h"
 #include "base/net/stratum/strategies/StrategyProxy.h"
 #include "base/tools/String.h"
 
@@ -41,6 +42,7 @@ public:
     inline const Algorithm &algorithm() const   { return m_algorithm; }
     inline uint64_t accepted() const            { return m_accepted; }
     inline uint64_t rejected() const            { return m_rejected; }
+    inline bool isSoloMode() const              { return m_soloMode; }
 
 #   ifdef XMRIG_FEATURE_API
     rapidjson::Value getConnection(rapidjson::Document &doc, int version) const;
@@ -49,6 +51,9 @@ public:
 
     void printConnection() const;
     void printResults() const;
+    void sampleSoloEffort(uint64_t now, double hashesPerSecond, bool active);
+    void setSoloJob(uint64_t difficulty);
+    void setSoloBlockFound(uint64_t height, uint64_t now);
 
     static const char *scaleDiff(uint64_t &diff);
     static std::string humanDiff(uint64_t diff);
@@ -68,18 +73,28 @@ private:
 
     Algorithm m_algorithm;
     bool m_active               = false;
+    bool m_soloMode             = false;
     char m_pool[256]{};
     std::array<uint64_t, 10> m_topDiff { { } };
     std::vector<uint16_t> m_latency;
     String m_fingerprint;
+    String m_extraNonceStatus;
+    String m_familyId;
     String m_ip;
+    String m_prevHash;
+    String m_templateSource;
     String m_tls;
+    SoloEffort m_soloEffort;
     uint64_t m_accepted         = 0;
     uint64_t m_connectionTime   = 0;
     uint64_t m_diff             = 0;
     uint64_t m_failures         = 0;
     uint64_t m_hashes           = 0;
+    uint64_t m_height           = 0;
+    uint64_t m_nonceMask        = 0;
     uint64_t m_rejected         = 0;
+    uint64_t m_soloEpochStart   = 0;
+    uint64_t m_templateReceived = 0;
 };
 
 

@@ -137,6 +137,42 @@ rapidjson::Value xmrig::NetworkState::getConnection(rapidjson::Document &doc, in
     connection.AddMember("avg_time_ms",     avgTime(), allocator);
     connection.AddMember("hashes_total",    m_hashes, allocator);
 
+    if (m_soloMode) {
+        Value history(kArrayType);
+        history.Reserve(static_cast<SizeType>(m_soloEffort.history().size()), allocator);
+
+        for (const auto &solve : m_soloEffort.history()) {
+            Value entry(kObjectType);
+            entry.AddMember("height", solve.height, allocator);
+            entry.AddMember("ms", solve.elapsedMs, allocator);
+            entry.AddMember("effort", solve.effort, allocator);
+            history.PushBack(entry, allocator);
+        }
+
+        Value solo(kObjectType);
+        solo.AddMember("blocks_found", m_soloEffort.blocksFound(), allocator);
+        solo.AddMember("current_effort", m_soloEffort.currentEffort(), allocator);
+        solo.AddMember("avg_effort", m_soloEffort.avgEffort(), allocator);
+        solo.AddMember("history", history, allocator);
+        connection.AddMember("solo", solo, allocator);
+    }
+
+    char nonceMask[24]{};
+    snprintf(nonceMask, sizeof(nonceMask), "0x%" PRIx64, m_nonceMask);
+
+    const uint64_t now = Chrono::steadyMSecs();
+    const uint64_t templateAge = m_templateReceived != 0 && now >= m_templateReceived ? now - m_templateReceived : 0;
+
+    Value workDomain(kObjectType);
+    workDomain.AddMember("family_id",      m_familyId.toJSON(), allocator);
+    workDomain.AddMember("extra_nonce",    m_extraNonceStatus.toJSON(), allocator);
+    workDomain.AddMember("template_age_ms", templateAge, allocator);
+    workDomain.AddMember("source",         m_templateSource.toJSON(), allocator);
+    workDomain.AddMember("nonce_mask",     Value(nonceMask, allocator), allocator);
+    workDomain.AddMember("height",         m_height, allocator);
+    workDomain.AddMember("prev_hash",      m_prevHash.toJSON(), allocator);
+    connection.AddMember("work_domain", workDomain, allocator);
+
     if (version == 1) {
         connection.AddMember("error_log", Value(kArrayType), allocator);
     }
@@ -223,6 +259,36 @@ void xmrig::NetworkState::printResults() const
 }
 
 
+void xmrig::NetworkState::sampleSoloEffort(uint64_t now, double hashesPerSecond, bool active)
+{
+    m_soloEffort.sampleHashrate(now, hashesPerSecond, m_soloMode && active);
+}
+
+
+void xmrig::NetworkState::setSoloJob(uint64_t difficulty)
+{
+    m_soloEffort.onJob(difficulty);
+
+    if (m_soloEpochStart == 0) {
+        m_soloEpochStart = Chrono::steadyMSecs();
+    }
+}
+
+
+void xmrig::NetworkState::setSoloBlockFound(uint64_t height, uint64_t now)
+{
+    const uint64_t elapsed = m_soloEpochStart != 0 && now >= m_soloEpochStart ? now - m_soloEpochStart : 0;
+
+    m_soloEffort.onOwnBlockFound(height != 0 ? height : m_height, elapsed);
+    m_soloEpochStart = now;
+
+    const auto &solve = m_soloEffort.history().back();
+    LOG_NOTICE(GREEN_BOLD_S "solo block accepted" " height " WHITE_BOLD("%" PRIu64)
+               " effort " CYAN_BOLD("%.4f") " elapsed " CYAN_BOLD("%" PRIu64 " ms"),
+               solve.height, solve.effort, solve.elapsedMs);
+}
+
+
 const char *xmrig::NetworkState::scaleDiff(uint64_t &diff)
 {
     if (diff >= 100000000000) {
@@ -263,6 +329,7 @@ void xmrig::NetworkState::onActive(IStrategy *strategy, IClient *client)
     m_tls            = client->tlsVersion();
     m_fingerprint    = client->tlsFingerprint();
     m_active         = true;
+    m_soloMode       = client->pool().mode() == Pool::MODE_DAEMON;
     m_connectionTime = Chrono::steadyMSecs();
 
     StrategyProxy::onActive(strategy, client);
@@ -271,8 +338,17 @@ void xmrig::NetworkState::onActive(IStrategy *strategy, IClient *client)
 
 void xmrig::NetworkState::onJob(IStrategy *strategy, IClient *client, const Job &job, const rapidjson::Value &params)
 {
+    m_soloMode = client->pool().mode() == Pool::MODE_DAEMON;
+
     m_algorithm = job.algorithm();
     m_diff      = job.diff();
+    m_extraNonceStatus = job.extraNonceStatusName();
+    m_familyId          = job.templateFamilyIdHex();
+    m_height            = job.height();
+    m_nonceMask         = job.nonceMask();
+    m_prevHash          = job.prevHash();
+    m_templateReceived  = job.receivedAt();
+    m_templateSource    = job.templateSourceName();
 
     StrategyProxy::onJob(strategy, client, job, params);
 }

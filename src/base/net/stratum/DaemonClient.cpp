@@ -27,6 +27,7 @@
 
 
 #include "base/net/stratum/DaemonClient.h"
+#include "base/net/stratum/ZmqHint.h"
 #include "3rdparty/rapidjson/document.h"
 #include "3rdparty/rapidjson/error/en.h"
 #include "base/io/json/Json.h"
@@ -178,9 +179,9 @@ int64_t xmrig::DaemonClient::submit(const JobResult &result)
     JsonRequest::create(doc, m_sequence, "submitblock", params);
 
 #   ifdef XMRIG_PROXY_PROJECT
-    m_results[m_sequence] = SubmitResult(m_sequence, result.diff, result.actualDiff(), result.id, 0);
+    m_results[m_sequence] = SubmitResult(m_sequence, result.diff, result.actualDiff(), result.id, 0, m_job.height());
 #   else
-    m_results[m_sequence] = SubmitResult(m_sequence, result.diff, result.actualDiff(), 0, result.backend);
+    m_results[m_sequence] = SubmitResult(m_sequence, result.diff, result.actualDiff(), 0, result.backend, m_job.height());
 #   endif
 
     std::map<std::string, std::string> headers;
@@ -218,7 +219,7 @@ void xmrig::DaemonClient::connect()
         m_dns = Dns::resolve(m_pool.host(), this);
     }
     else {
-        getBlockTemplate();
+        getBlockTemplate(TemplateSource::POLL);
     }
 }
 
@@ -234,6 +235,11 @@ void xmrig::DaemonClient::setPool(const Pool &pool)
 {
     BaseClient::setPool(pool);
 
+    if (!m_zmqHintWarned && shouldWarnMissingZmq(m_pool.mode() == Pool::MODE_DAEMON, m_pool.zmq_port())) {
+        LOG_WARN("%s " YELLOW("solo mining without ZMQ; configure --daemon-zmq-port to reduce stale-template latency"), tag());
+        m_zmqHintWarned = true;
+    }
+
     m_walletAddress.decode(m_user);
 
     m_coin = pool.coin().isValid() ?  pool.coin() : m_walletAddress.coin();
@@ -247,7 +253,7 @@ void xmrig::DaemonClient::setPool(const Pool &pool)
 void xmrig::DaemonClient::onHttpData(const HttpData &data)
 {
     if (data.status != 200) {
-        return retry();
+        return retry(data.rpcId == 0 ? -1 : static_cast<int64_t>(data.rpcId));
     }
 
     m_ip = data.ip().c_str();
@@ -263,7 +269,7 @@ void xmrig::DaemonClient::onHttpData(const HttpData &data)
             LOG_ERR("%s " RED("JSON decode failed: ") RED_BOLD("\"%s\""), tag(), rapidjson::GetParseError_En(doc.GetParseError()));
         }
 
-        return retry();
+        return retry(data.rpcId == 0 ? -1 : static_cast<int64_t>(data.rpcId));
     }
 
     if (data.method == HTTP_GET) {
@@ -271,7 +277,7 @@ void xmrig::DaemonClient::onHttpData(const HttpData &data)
             if (!doc.HasMember(kHash)) {
                 m_apiVersion = API_CRYPTONOTE_DEFAULT;
 
-                return send(kGetInfo);
+                return send(kGetInfo, templateSourceFromTag(data.userType));
             }
 
             const uint64_t height = Json::getUint64(doc, kHeight);
@@ -282,7 +288,7 @@ void xmrig::DaemonClient::onHttpData(const HttpData &data)
                 if ((height != m_blocktemplateRequestHeight) || (hash != m_blocktemplateRequestHash)) {
                     m_blocktemplateRequestHeight = height;
                     m_blocktemplateRequestHash = hash;
-                    getBlockTemplate();
+                    getBlockTemplate(templateSourceFromTag(data.userType));
                 }
             }
         }
@@ -295,7 +301,7 @@ void xmrig::DaemonClient::onHttpData(const HttpData &data)
                 if ((height != m_blocktemplateRequestHeight) || (hash != m_blocktemplateRequestHash)) {
                     m_blocktemplateRequestHeight = height;
                     m_blocktemplateRequestHash = hash;
-                    getBlockTemplate();
+                    getBlockTemplate(templateSourceFromTag(data.userType));
                 }
             }
         }
@@ -304,7 +310,7 @@ void xmrig::DaemonClient::onHttpData(const HttpData &data)
     }
 
     if (!parseResponse(Json::getInt64(doc, "id", -1), Json::getObject(doc, "result"), Json::getObject(doc, "error"))) {
-        retry();
+        retry(data.rpcId == 0 ? -1 : static_cast<int64_t>(data.rpcId));
     }
 }
 
@@ -314,7 +320,7 @@ void xmrig::DaemonClient::onTimer(const Timer *)
     if (m_pool.zmq_port() >= 0) {
         m_prevHash = nullptr;
         m_blocktemplateRequestHash = nullptr;
-        send(kGetHeight);
+        send(kGetHeight, TemplateSource::POLL);
         return;
     }
 
@@ -327,7 +333,7 @@ void xmrig::DaemonClient::onTimer(const Timer *)
         connect();
     }
     else if (m_state == ConnectedState) {
-        send((m_apiVersion == API_MONERO) ? kGetHeight : kGetInfo);
+        send((m_apiVersion == API_MONERO) ? kGetHeight : kGetInfo, TemplateSource::POLL);
     }
 }
 
@@ -376,7 +382,7 @@ bool xmrig::DaemonClient::isOutdated(uint64_t height, const char *hash) const
 }
 
 
-bool xmrig::DaemonClient::parseJob(const rapidjson::Value &params, int *code)
+bool xmrig::DaemonClient::parseJob(const rapidjson::Value &params, int *code, const DaemonTemplateRequest *request)
 {
     auto jobError = [this, code](const char *message) {
         if (!isQuiet()) {
@@ -398,6 +404,22 @@ bool xmrig::DaemonClient::parseJob(const rapidjson::Value &params, int *code)
 
     if (!m_blocktemplate.parse(blocktemplate, m_coin)) {
         return jobError("Invalid block template received from daemon.");
+    }
+
+    const Span &returnedExtraNonce = m_blocktemplate.txExtraNonce();
+    if (!request) {
+        job.setExtraNonceStatus(Job::ExtraNonceStatus::UNSUPPORTED);
+    }
+    else if (returnedExtraNonce.empty()) {
+        job.setExtraNonceStatus(Job::ExtraNonceStatus::MISSING);
+    }
+    else {
+        // getblocktemplate reserves eight bytes for cross-request work separation. The proxy submit path
+        // can later overwrite only its four-byte per-miner subnonce, but verification here intentionally
+        // requires the daemon to have echoed all eight requested bytes; a different width is a mismatch.
+        const bool matches = returnedExtraNonce.size() == request->extraNonce.size()
+            && memcmp(returnedExtraNonce.data(), request->extraNonce.data(), returnedExtraNonce.size()) == 0;
+        job.setExtraNonceStatus(matches ? Job::ExtraNonceStatus::VERIFIED : Job::ExtraNonceStatus::MISMATCH);
     }
 
 #   ifdef XMRIG_PROXY_PROJECT
@@ -483,6 +505,11 @@ bool xmrig::DaemonClient::parseJob(const rapidjson::Value &params, int *code)
     job.setSeedHash(Json::getString(params, "seed_hash"));
     job.setHeight(Json::getUint64(params, kHeight));
     job.setDiff(Json::getUint64(params, "difficulty"));
+    job.setPrevHash(Cvt::toHex(m_blocktemplate.prevId()));
+    job.setTemplateSource(request ? request->source : TemplateSource::UNSUPPORTED);
+
+    const uint64_t receivedAt = Chrono::steadyMSecs();
+    job.setReceivedAt(receivedAt);
 
     m_currentJobId = Cvt::toHex(Cvt::randomBytes(4));
     job.setId(m_currentJobId);
@@ -490,7 +517,7 @@ bool xmrig::DaemonClient::parseJob(const rapidjson::Value &params, int *code)
     m_job              = std::move(job);
     m_blocktemplateStr = std::move(blocktemplate);
     m_prevHash         = Json::getString(params, "prev_hash");
-    m_jobSteadyMs      = Chrono::steadyMSecs();
+    m_jobSteadyMs      = receivedAt;
 
     if (m_state == ConnectingState) {
         setState(ConnectedState);
@@ -506,6 +533,9 @@ bool xmrig::DaemonClient::parseResponse(int64_t id, const rapidjson::Value &resu
     if (id == -1) {
         return false;
     }
+
+    DaemonTemplateRequest request;
+    const bool hasRequest = m_blocktemplateRequests.take(id, request);
 
     if (error.IsObject()) {
         const char *message = error["message"].GetString();
@@ -523,13 +553,13 @@ bool xmrig::DaemonClient::parseResponse(int64_t id, const rapidjson::Value &resu
 
     if (result.HasMember("top_block_hash")) {
         if (m_prevHash != Json::getString(result, "top_block_hash")) {
-            getBlockTemplate();
+            getBlockTemplate(TemplateSource::POLL);
         }
         return true;
     }
 
     int code = -1;
-    if (result.HasMember(kBlocktemplateBlob) && parseJob(result, &code)) {
+    if (result.HasMember(kBlocktemplateBlob) && parseJob(result, &code, hasRequest ? &request : nullptr)) {
         return true;
     }
 
@@ -537,7 +567,7 @@ bool xmrig::DaemonClient::parseResponse(int64_t id, const rapidjson::Value &resu
 
     if (handleSubmitResponse(id, error_msg)) {
         if (error_msg || (m_pool.zmq_port() < 0)) {
-            getBlockTemplate();
+            getBlockTemplate(TemplateSource::POLL);
         }
         return true;
     }
@@ -547,7 +577,7 @@ bool xmrig::DaemonClient::parseResponse(int64_t id, const rapidjson::Value &resu
 }
 
 
-int64_t xmrig::DaemonClient::getBlockTemplate()
+int64_t xmrig::DaemonClient::getBlockTemplate(TemplateSource source)
 {
     using namespace rapidjson;
     Document doc(kObjectType);
@@ -555,9 +585,11 @@ int64_t xmrig::DaemonClient::getBlockTemplate()
 
     Value params(kObjectType);
     params.AddMember("wallet_address", m_user.toJSON(), allocator);
-    params.AddMember("extra_nonce", Cvt::toHex(Cvt::randomBytes(kBlobReserveSize)).toJSON(doc), allocator);
+    Buffer extraNonce = Cvt::randomBytes(kBlobReserveSize);
+    params.AddMember("extra_nonce", Cvt::toHex(extraNonce).toJSON(doc), allocator);
 
     JsonRequest::create(doc, m_sequence, "getblocktemplate", params);
+    m_blocktemplateRequests.add(m_sequence, std::move(extraNonce), source);
 
     return rpcSend(doc);
 }
@@ -570,14 +602,18 @@ int64_t xmrig::DaemonClient::rpcSend(const rapidjson::Document &doc, const std::
         req.headers.insert(header);
     }
 
-    fetch(tag(), std::move(req), m_httpListener);
+    const int64_t id = m_sequence++;
+    fetch(tag(), std::move(req), m_httpListener, 0, static_cast<uint64_t>(id));
 
-    return m_sequence++;
+    return id;
 }
 
 
-void xmrig::DaemonClient::retry()
+void xmrig::DaemonClient::retry(int64_t failedRequestId)
 {
+    // HTTP responses carry their JSON-RPC id in HttpData::rpcId, so a failed request can be removed
+    // without discarding metadata for independent in-flight templates that may still arrive.
+    m_blocktemplateRequests.onRetry(failedRequestId);
     m_failures++;
     m_listener->onClose(this, static_cast<int>(m_failures));
 
@@ -601,10 +637,10 @@ void xmrig::DaemonClient::retry()
 }
 
 
-void xmrig::DaemonClient::send(const char *path)
+void xmrig::DaemonClient::send(const char *path, TemplateSource source)
 {
     FetchRequest req(HTTP_GET, m_pool.host(), m_pool.port(), path, m_pool.isTLS(), isQuiet());
-    fetch(tag(), std::move(req), m_httpListener);
+    fetch(tag(), std::move(req), m_httpListener, templateSourceTag(source));
 }
 
 
@@ -806,7 +842,7 @@ void xmrig::DaemonClient::ZMQRead(ssize_t nread, const uv_buf_t* buf)
                 m_ZMQConnectionState = ZMQ_CONNECTED;
                 m_ZMQRecvBuf.erase(m_ZMQRecvBuf.begin(), m_ZMQRecvBuf.begin() + size + 2);
 
-                getBlockTemplate();
+                getBlockTemplate(TemplateSource::ZMQ);
                 break;
             }
             return;
@@ -900,7 +936,7 @@ void xmrig::DaemonClient::ZMQParse()
     // We can't call get_block_template directly because daemon is not ready yet
     m_prevHash = nullptr;
     m_blocktemplateRequestHash = nullptr;
-    send(kGetHeight);
+    send(kGetHeight, TemplateSource::ZMQ);
 
     const uint64_t t = m_pool.jobTimeout();
     m_timer->stop();

@@ -17,6 +17,7 @@
  */
 
 #include <algorithm>
+#include <cmath>
 #include <mutex>
 #include <thread>
 
@@ -446,6 +447,31 @@ bool xmrig::Miner::isEnabled() const
 bool xmrig::Miner::isEnabled(const Algorithm &algorithm) const
 {
     return std::find(d_ptr->algorithms.begin(), d_ptr->algorithms.end(), algorithm) != d_ptr->algorithms.end();
+}
+
+
+double xmrig::Miner::hashRate() const
+{
+    double total = 0.0;
+
+    for (const IBackend *backend : d_ptr->backends) {
+        if (!backend->isEnabled()) {
+            continue;
+        }
+
+        const Hashrate *hashrate = backend->hashrate();
+        if (!hashrate) {
+            continue;
+        }
+
+        const auto recent = hashrate->calc(Hashrate::ShortInterval);
+        const double rate = recent.first ? recent.second : hashrate->average();
+        if (std::isfinite(rate) && rate > 0.0) {
+            total += rate;
+        }
+    }
+
+    return total;
 }
 
 

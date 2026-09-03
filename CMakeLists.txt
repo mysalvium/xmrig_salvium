@@ -262,6 +262,28 @@ if (WITH_SALVIUM_TESTS)
 
     target_include_directories(salvium_algorithm_tests PRIVATE src src/3rdparty)
 
+    add_executable(salvium_template_family_tests
+        tests/salvium_template_family_tests.cpp
+        src/base/net/stratum/DaemonTelemetry.cpp
+        src/base/tools/cryptonote/TemplateFamily.cpp
+        src/base/crypto/keccak.cpp
+        )
+
+    target_include_directories(salvium_template_family_tests PRIVATE src src/3rdparty)
+
+    add_executable(salvium_solo_effort_tests
+        tests/salvium_solo_effort_tests.cpp
+        src/base/net/stratum/SoloEffort.cpp
+        )
+
+    target_include_directories(salvium_solo_effort_tests PRIVATE src src/3rdparty)
+
+    add_executable(salvium_zmq_hint_tests
+        tests/salvium_zmq_hint_tests.cpp
+        )
+
+    target_include_directories(salvium_zmq_hint_tests PRIVATE src src/3rdparty)
+
     add_test(
         NAME salvium-mainnet-block-templates
         COMMAND salvium_block_template_tests "${CMAKE_SOURCE_DIR}/tests/fixtures/salvium-mainnet-blocks.json"
@@ -292,6 +314,21 @@ if (WITH_SALVIUM_TESTS)
     add_test(
         NAME donation-donate-level-zero
         COMMAND salvium_donate_tests
+        )
+
+    add_test(
+        NAME salvium-template-family
+        COMMAND salvium_template_family_tests
+        )
+
+    add_test(
+        NAME salvium-solo-effort
+        COMMAND salvium_solo_effort_tests
+        )
+
+    add_test(
+        NAME salvium-zmq-hint
+        COMMAND salvium_zmq_hint_tests
         )
 endif()
 
