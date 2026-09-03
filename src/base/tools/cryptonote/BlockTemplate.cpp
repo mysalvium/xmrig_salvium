@@ -26,7 +26,6 @@
 
 
 namespace {
-    constexpr uint8_t kSalviumProtocolHF              = 2;
     constexpr uint8_t kSalviumProtocolTxVersionLegacy = 2;
     constexpr uint8_t kSalviumProtocolTxVersionCarrot = 4;
     constexpr uint8_t kSalviumProtocolTxVersionTokens = 5;
@@ -62,26 +61,31 @@ void xmrig::BlockTemplate::calculateMinerTxHash(const uint8_t *prefix_begin, con
 }
 
 
-void xmrig::BlockTemplate::calculateRootHash(const uint8_t *prefix_begin, const uint8_t *prefix_end, const Buffer &miner_tx_merkle_tree_branch, uint8_t *root_hash)
+void xmrig::BlockTemplate::calculateRootHash(const uint8_t *prefix_begin, const uint8_t *prefix_end, const Buffer &miner_tx_merkle_tree_branch, uint32_t miner_tx_merkle_tree_path, uint8_t *root_hash)
 {
     calculateMinerTxHash(prefix_begin, prefix_end, root_hash);
 
-    for (size_t i = 0; i < miner_tx_merkle_tree_branch.size(); i += kHashSize) {
+    const size_t depth = miner_tx_merkle_tree_branch.size() / kHashSize;
+
+    for (size_t d = 0; d < depth; ++d) {
         uint8_t h[kHashSize * 2];
 
-        memcpy(h, root_hash, kHashSize);
-        memcpy(h + kHashSize, miner_tx_merkle_tree_branch.data() + i, kHashSize);
+        const uint32_t t = (miner_tx_merkle_tree_path >> (depth - d - 1)) & 1;
+
+        memcpy(h + kHashSize * t, root_hash, kHashSize);
+        memcpy(h + kHashSize * (t ^ 1), miner_tx_merkle_tree_branch.data() + d * kHashSize, kHashSize);
 
         keccak(h, kHashSize * 2, root_hash, kHashSize);
     }
 }
 
 
-void xmrig::BlockTemplate::calculateMerkleTreeHash()
+void xmrig::BlockTemplate::calculateMerkleTreeHash(uint32_t index)
 {
     m_minerTxMerkleTreeBranch.clear();
+    m_minerTxMerkleTreePath = 0;
 
-    const uint64_t count = m_numHashes + baseTransactionCount();
+    const size_t count = m_hashes.size() / kHashSize;
     const uint8_t *h = m_hashes.data();
 
     if (count == 1) {
@@ -90,14 +94,23 @@ void xmrig::BlockTemplate::calculateMerkleTreeHash()
     else if (count == 2) {
         keccak(h, kHashSize * 2, m_rootHash, kHashSize);
 
-        m_minerTxMerkleTreeBranch.insert(m_minerTxMerkleTreeBranch.end(), h + kHashSize, h + kHashSize * 2);
+        m_minerTxMerkleTreeBranch.reserve(1);
+        m_minerTxMerkleTreeBranch.insert(m_minerTxMerkleTreeBranch.end(), h + kHashSize * (index ^ 1), h + kHashSize * ((index ^ 1) + 1));
+        m_minerTxMerkleTreePath = static_cast<uint32_t>(index);
     }
     else {
+        uint8_t h2[kHashSize];
+        memcpy(h2, h + kHashSize * index, kHashSize);
+
         size_t cnt = 1;
+        size_t proof_max_size = 0;
         do {
             cnt <<= 1;
+            ++proof_max_size;
         } while (cnt <= count);
         cnt >>= 1;
+
+        m_minerTxMerkleTreeBranch.reserve(proof_max_size);
 
         Buffer ints(cnt * kHashSize);
 
@@ -106,25 +119,33 @@ void xmrig::BlockTemplate::calculateMerkleTreeHash()
 
         for (size_t i = k, j = k; j < cnt; i += 2, ++j) {
             keccak(h + i * kHashSize, kHashSize * 2, ints.data() + j * kHashSize, kHashSize);
+
+            if (memcmp(h + i * kHashSize, h2, kHashSize) == 0) {
+                m_minerTxMerkleTreeBranch.insert(m_minerTxMerkleTreeBranch.end(), h + kHashSize * (i + 1), h + kHashSize * (i + 2));
+                memcpy(h2, ints.data() + j * kHashSize, kHashSize);
+            }
+            else if (memcmp(h + (i + 1) * kHashSize, h2, kHashSize) == 0) {
+                m_minerTxMerkleTreeBranch.insert(m_minerTxMerkleTreeBranch.end(), h + kHashSize * i, h + kHashSize * (i + 1));
+                memcpy(h2, ints.data() + j * kHashSize, kHashSize);
+                m_minerTxMerkleTreePath = 1;
+            }
         }
 
-        // Build branch for index 0 (miner tx)
-        if (k > 0) {
-            m_minerTxMerkleTreeBranch.insert(m_minerTxMerkleTreeBranch.end(), h + kHashSize, h + kHashSize * 2);
-        }
-        else {
-            m_minerTxMerkleTreeBranch.insert(m_minerTxMerkleTreeBranch.end(), h + kHashSize, h + kHashSize * 2);
-        }
-
-        // Compute root
         while (cnt >= 2) {
             cnt >>= 1;
             for (size_t i = 0, j = 0; j < cnt; i += 2, ++j) {
                 uint8_t tmp[kHashSize];
                 keccak(ints.data() + i * kHashSize, kHashSize * 2, tmp, kHashSize);
 
-                if (j == 0 && m_minerTxMerkleTreeBranch.size() / kHashSize < 32) {
+                if (memcmp(ints.data() + i * kHashSize, h2, kHashSize) == 0) {
                     m_minerTxMerkleTreeBranch.insert(m_minerTxMerkleTreeBranch.end(), ints.data() + kHashSize * (i + 1), ints.data() + kHashSize * (i + 2));
+                    memcpy(h2, tmp, kHashSize);
+                    m_minerTxMerkleTreePath <<= 1;
+                }
+                else if (memcmp(ints.data() + (i + 1) * kHashSize, h2, kHashSize) == 0) {
+                    m_minerTxMerkleTreeBranch.insert(m_minerTxMerkleTreeBranch.end(), ints.data() + kHashSize * i, ints.data() + kHashSize * (i + 1));
+                    memcpy(h2, tmp, kHashSize);
+                    m_minerTxMerkleTreePath = (m_minerTxMerkleTreePath << 1) | 1;
                 }
 
                 memcpy(ints.data() + j * kHashSize, tmp, kHashSize);
@@ -191,7 +212,7 @@ void xmrig::BlockTemplate::generateHashingBlob(Buffer &out) const
     out.assign(m_blob.begin(), m_blob.begin() + offset(MINER_TX_PREFIX_OFFSET));
     out.insert(out.end(), m_rootHash, m_rootHash + kHashSize);
 
-    uint64_t k = m_numHashes + baseTransactionCount();
+    uint64_t k = m_numHashes + hashingBlobBaseTransactionCount();
     while (k >= 0x80) {
         out.emplace_back((static_cast<uint8_t>(k) & 0x7F) | 0x80);
         k >>= 7;
@@ -224,11 +245,10 @@ bool xmrig::BlockTemplate::parse(bool hashes)
         ar(pricing_record);
     }
 
-    // Detect Salvium protocol TX
-    m_hasProtocolTx = false;
-    if (m_coin == Coin::SALVIUM && m_version.first >= kSalviumProtocolHF) {
-        m_hasProtocolTx = true;
-    }
+    // Salvium serializes protocol_tx in every mainnet block. Version 1 is
+    // unusual: protocol_tx participates in the Merkle root, while the
+    // hashing-blob transaction count remains 1 until hardfork 2.
+    m_hasProtocolTx = (m_coin == Coin::SALVIUM);
 
     // Miner transaction begin
     // Prefix begin
@@ -299,17 +319,25 @@ bool xmrig::BlockTemplate::parse(bool hashes)
     }
 
     if (m_coin == Coin::SALVIUM) {
-        if (m_outputType == kTxOutToTaggedKey) {
-            ar(m_viewTag);
-        }
-        else if (m_outputType == kTxOutToCarrotV1) {
-            ar(m_carrotViewTag);
-            ar(m_janusAnchor);
+        if (!parseSalviumOutput(ar, m_outputType, true)) {
+            return false;
         }
 
         // Parse additional outputs
         for (uint64_t k = 1; k < m_numOutputs; ++k) {
-            if (!parseSalviumOutput(ar, m_outputType, false)) {
+            uint64_t amount;
+            ar(amount);
+
+            uint8_t output_type;
+            ar(output_type);
+
+            if ((output_type != kTxOutToKey) && (output_type != kTxOutToTaggedKey) && (output_type != kTxOutToCarrotV1)) {
+                return false;
+            }
+
+            ar.skip(kKeySize);
+
+            if (!parseSalviumOutput(ar, output_type, false)) {
                 return false;
             }
         }
@@ -370,6 +398,10 @@ bool xmrig::BlockTemplate::parse(bool hashes)
 
         switch (extra_tag) {
         case 0x00: // TX_EXTRA_TAG_PADDING
+            if (m_coin != Coin::SALVIUM) {
+                return false;
+            }
+
             while (ar_extra.index() < m_extraSize && extra_ptr[ar_extra.index()] == 0) {
                 ar_extra.skip(1);
             }
@@ -396,11 +428,19 @@ bool xmrig::BlockTemplate::parse(bool hashes)
             break;
 
         case 0x04: // TX_EXTRA_TAG_ADDITIONAL_PUBKEYS
+            if (m_coin != Coin::SALVIUM) {
+                return false;
+            }
+
             if (!ar_extra(size)) { return false; }
             ar_extra.skip(kKeySize * size);
             break;
 
         default:
+            if (m_coin != Coin::SALVIUM) {
+                return false; // Preserve upstream behavior for non-Salvium coins.
+            }
+
             if (!ar_extra(size)) { return false; }
             if (size > ar_extra.remaining()) { return false; }
             ar_extra.skip(static_cast<size_t>(size));
@@ -511,12 +551,8 @@ bool xmrig::BlockTemplate::parse(bool hashes)
 
             ar.skip(kKeySize); // ephemeral public key
 
-            if (proto_output_type == kTxOutToTaggedKey) {
-                ar.skip(1); // view tag
-            }
-            else if (proto_output_type == kTxOutToCarrotV1) {
-                ar.skip(kCarrotViewTagSize); // carrot view tag
-                ar.skip(kCarrotAnchorSize); // janus anchor
+            if (!parseSalviumOutput(ar, proto_output_type, false)) {
+                return false;
             }
         }
 
@@ -531,9 +567,6 @@ bool xmrig::BlockTemplate::parse(bool hashes)
         if (proto_tx_type != 2) {
             return false;
         }
-
-        uint64_t proto_amount_burnt;
-        ar(proto_amount_burnt);
 
         setOffset(PROTOCOL_TX_PREFIX_END_OFFSET, ar.index());
 
@@ -583,7 +616,7 @@ bool xmrig::BlockTemplate::parse(bool hashes)
                 memcpy(m_hashes.data() + (hash_offset + i) * kHashSize, h.data(), kHashSize);
             }
 
-            calculateMerkleTreeHash();
+            calculateMerkleTreeHash(0);
         }
         else {
             m_hashes.clear();
@@ -607,7 +640,7 @@ bool xmrig::BlockTemplate::parse(bool hashes)
                 memcpy(m_hashes.data() + kHashSize, m_FCMPTreeRoot, kHashSize);
             }
 
-            calculateMerkleTreeHash();
+            calculateMerkleTreeHash(coinbase_tx_index);
         }
     }
 
@@ -617,25 +650,41 @@ bool xmrig::BlockTemplate::parse(bool hashes)
 
 bool xmrig::BlockTemplate::parseSalviumOutput(BlobReader<true> &ar, uint8_t outputType, bool storeExtraData)
 {
-    uint64_t amount;
-    ar(amount);
+    uint64_t asset_type_len = 0;
+    ar(asset_type_len);
 
-    uint8_t out_type;
-    ar(out_type);
-
-    if ((out_type != kTxOutToKey) && (out_type != kTxOutToTaggedKey) && (out_type != kTxOutToCarrotV1)) {
+    if (asset_type_len > ar.remaining()) {
         return false;
     }
 
-    // Ephemeral public key
-    ar.skip(kKeySize);
-
-    if (out_type == kTxOutToTaggedKey) {
-        ar.skip(1); // view tag
+    if (asset_type_len > 0 && !ar.skip(static_cast<size_t>(asset_type_len))) {
+        return false;
     }
-    else if (out_type == kTxOutToCarrotV1) {
-        ar.skip(kCarrotViewTagSize); // carrot view tag (3 bytes)
-        ar.skip(kCarrotAnchorSize); // janus anchor (16 bytes)
+
+    if (outputType == kTxOutToKey || outputType == kTxOutToTaggedKey) {
+        uint64_t unlock_time = 0;
+        ar(unlock_time);
+    }
+
+    if (outputType == kTxOutToTaggedKey) {
+        uint8_t view_tag = 0;
+        ar(view_tag);
+
+        if (storeExtraData) {
+            m_viewTag = view_tag;
+        }
+    }
+    else if (outputType == kTxOutToCarrotV1) {
+        uint8_t carrot_view_tag[kCarrotViewTagSize];
+        uint8_t carrot_anchor[kCarrotAnchorSize];
+
+        ar(carrot_view_tag);
+        ar(carrot_anchor);
+
+        if (storeExtraData) {
+            memcpy(m_carrotViewTag, carrot_view_tag, kCarrotViewTagSize);
+            memcpy(m_janusAnchor, carrot_anchor, kCarrotAnchorSize);
+        }
     }
 
     return true;

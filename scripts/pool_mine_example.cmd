@@ -1,20 +1,21 @@
-:: Example batch file for mining Monero at a pool
+:: Example batch file for mining Salvium at a pool
 ::
 :: Format:
-::	xmrig.exe -o <pool address>:<pool port> -u <pool username/wallet> -p <pool password>
+::	xmrig.exe --coin SAL -a rx/0 -o <pool>:<port> -u <SC1 wallet>.<worker> -p x -k
 ::
 :: Fields:
-::	pool address		The host name of the pool stratum or its IP address, for example pool.hashvault.pro
-::	pool port 		The port of the pool's stratum to connect to, for example 3333. Check your pool's getting started page.
-::	pool username/wallet 	For most pools, this is the wallet address you want to mine to. Some pools require a username
-::	pool password 		For most pools this can be just 'x'. For pools using usernames, you may need to provide a password as configured on the pool.
+::	SAL_WALLET		Your primary Salvium Carrot address, beginning with SC1
+::	WORKER_NAME		A short name for this machine, without spaces
 ::
-:: List of Monero mining pools:
-::	https://miningpoolstats.stream/monero
-::
-:: Choose pools outside of top 5 to help Monero network be more decentralized!
-:: Smaller pools also often have smaller fees/payout limits.
+:: The first pool is the primary. XMRig uses the independently operated
+:: second pool if the first is unavailable. Both endpoints were confirmed
+:: with login-only mainnet checks on 2026-07-24.
 
 cd /d "%~dp0"
-xmrig.exe -o xmrpool.eu:3333 -u 48edfHu7V9Z84YzzMa6fUueoELZ9ZRXq9VetWzYGzKt52XU5xvqgzYnDK9URnRoJMk1j8nLwEVsaSWJ4fhdUyZijBGUicoD -p x
+set "SAL_WALLET=YOUR_PRIMARY_SC1_CARROT_ADDRESS"
+set "WORKER_NAME=YOUR_WORKER_NAME"
+
+xmrig.exe --coin SAL -a rx/0 ^
+  -o sal-us.kryptex.network:7028 -u %SAL_WALLET%.%WORKER_NAME% -p x -k ^
+  -o stratum-eu.rplant.xyz:7130 -u %SAL_WALLET%.%WORKER_NAME% -p x -k
 pause

@@ -41,16 +41,19 @@ namespace xmrig {
 static inline double randomf(double min, double max)                 { return (max - min) * (((static_cast<double>(rand())) / static_cast<double>(RAND_MAX))) + min; }
 static inline uint64_t random(uint64_t base, double min, double max) { return static_cast<uint64_t>(base * randomf(min, max)); }
 
-static const char *kDonateWalletSAL = "SC1siGGFjFh3zmnjy9zTc1dtyGG15iB66AgMT4yoTvqVJtfGLFJKkoCTiAHbqH6QzrdGfHr6NF1VehbkL5anUrCVLun8zTpFEaf";
-static const char *kDonateWalletXMR = "43ijLdzaQerhWXNsX7MuoX8DcL4zHdEP9i9qTxDmC4226rFQaAjT9QkgFdQ57ytPh1PKx8wGGeLciYQLLUiDB6tpR1z4q8D";
+static const char *kDonateWalletSAL = "SC11UfFsBY8SbYwtYBweziLqzU6UkgDwmi2mD5y3e6PNj4o1Y6WfzeV5HwyVfo1NajYbt8LQsZkJ1CmP6KnpwXmR54EGx7ymhJ";
+static const char *kDonateWalletXMR = "8ANeBLpzv1ZM5VQYgcMm6S2EydUoGt4UyYxooXR1yhnxM2eAhyivXKT8wWosLxYQxjjQoeynkSMCcA2a4yvTbH8oMyM2cfY";
 
 // Salvium donation pools (primary)
 static const char *kDonateHostSAL1 = "us2.salvium.herominers.com";
 static const char *kDonateHostSAL2 = "de.salvium.herominers.com";
 
-// Monero donation pools (fallback)
-static const char *kDonateHostXMR1 = "p2pool.io";
-static const char *kDonateHostXMR2 = "mini.p2pool.io";
+// Monero donation pools (fallback). These must be conventional Stratum pools
+// that credit the wallet supplied as the login. Remote P2Pool nodes are not
+// suitable because their payout wallet is configured on the P2Pool node and
+// the wallet supplied by XMRig is ignored.
+static const char *kDonateHostXMR1 = "pool.supportxmr.com";
+static const char *kDonateHostXMR2 = "xmrpool.eu";
 
 } // namespace xmrig
 
@@ -67,9 +70,12 @@ xmrig::DonateStrategy::DonateStrategy(Controller *controller, IStrategyListener 
     m_pools.emplace_back(kDonateHostSAL1, 1228, kDonateWalletSAL, nullptr, nullptr, 0, true, false, mode);
     m_pools.emplace_back(kDonateHostSAL2, 1228, kDonateWalletSAL, nullptr, nullptr, 0, true, false, mode);
 
-    // Monero p2pool (fallback) — if Salvium pools are unreachable
-    m_pools.emplace_back(kDonateHostXMR1, 3333, kDonateWalletXMR, nullptr, nullptr, 0, true, false, mode);
-    m_pools.emplace_back(kDonateHostXMR2, 3333, kDonateWalletXMR, nullptr, nullptr, 0, true, false, mode);
+    // Wallet-authenticated Monero pools (fallback) — if Salvium pools are
+    // unreachable. Keepalive is enabled and NiceHash nonce semantics are
+    // disabled because these are standard Monero Stratum endpoints.
+    constexpr int keepAliveTimeout = Pool::kKeepAliveTimeout;
+    m_pools.emplace_back(kDonateHostXMR1, 3333, kDonateWalletXMR, nullptr, nullptr, keepAliveTimeout, false, false, mode);
+    m_pools.emplace_back(kDonateHostXMR2, 3333, kDonateWalletXMR, nullptr, nullptr, keepAliveTimeout, false, false, mode);
 
     m_strategy = new FailoverStrategy(m_pools, 10, 2, this, true);
 

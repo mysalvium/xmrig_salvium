@@ -26,6 +26,7 @@ option(WITH_ADL             "Enable ADL (AMD Display Library) or sysfs support (
 option(WITH_STRICT_CACHE    "Enable strict checks for OpenCL cache" ON)
 option(WITH_INTERLEAVE_DEBUG_LOG "Enable debug log for threads interleave" OFF)
 option(WITH_PROFILING       "Enable profiling for developers" OFF)
+option(WITH_SALVIUM_TESTS   "Build Salvium mainnet block-template regression tests" OFF)
 option(WITH_SSE4_1          "Enable SSE 4.1 for Blake2" ON)
 option(WITH_AVX2            "Enable AVX2 for Blake2" ON)
 option(WITH_VAES            "Enable VAES instructions for Cryptonight" ON)
@@ -240,6 +241,37 @@ endif()
 
 add_executable(${CMAKE_PROJECT_NAME} ${HEADERS} ${SOURCES} ${SOURCES_OS} ${HEADERS_CRYPTO} ${SOURCES_CRYPTO} ${SOURCES_SYSLOG} ${TLS_SOURCES} ${XMRIG_ASM_SOURCES})
 target_link_libraries(${CMAKE_PROJECT_NAME} ${XMRIG_ASM_LIBRARY} ${OPENSSL_LIBRARIES} ${UV_LIBRARIES} ${EXTRA_LIBS} ${CPUID_LIB} ${ARGON2_LIBRARY} ${ETHASH_LIBRARY} ${GHOSTRIDER_LIBRARY})
+
+if (WITH_SALVIUM_TESTS)
+    enable_testing()
+
+    add_executable(salvium_block_template_tests
+        tests/salvium_block_template_tests.cpp
+        src/base/crypto/keccak.cpp
+        src/base/tools/cryptonote/BlockTemplate.cpp
+        src/base/tools/Cvt.cpp
+        src/base/tools/String.cpp
+        )
+
+    target_include_directories(salvium_block_template_tests PRIVATE src src/3rdparty)
+
+    add_executable(salvium_algorithm_tests
+        tests/salvium_algorithm_tests.cpp
+        src/base/crypto/Algorithm.cpp
+        )
+
+    target_include_directories(salvium_algorithm_tests PRIVATE src src/3rdparty)
+
+    add_test(
+        NAME salvium-mainnet-block-templates
+        COMMAND salvium_block_template_tests "${CMAKE_SOURCE_DIR}/tests/fixtures/salvium-mainnet-blocks.json"
+        )
+
+    add_test(
+        NAME salvium-randomx-aliases
+        COMMAND salvium_algorithm_tests
+        )
+endif()
 
 if (WIN32)
     if (NOT ARM_TARGET)

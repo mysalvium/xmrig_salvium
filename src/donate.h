@@ -35,8 +35,8 @@
  * Switching is instant and only happens after a successful connection, so you never lose any hashes.
  *
  * If you plan on changing donations to 0%, please consider making a one-off donation to one of these wallets:
- * SAL: SC1siGGFjFh3zmnjy9zTc1dtyGG15iB66AgMT4yoTvqVJtfGLFJKkoCTiAHbqH6QzrdGfHr6NF1VehbkL5anUrCVLun8zTpFEaf
- * XMR: 43ijLdzaQerhWXNsX7MuoX8DcL4zHdEP9i9qTxDmC4226rFQaAjT9QkgFdQ57ytPh1PKx8wGGeLciYQLLUiDB6tpR1z4q8D
+ * SAL: SC11UfFsBY8SbYwtYBweziLqzU6UkgDwmi2mD5y3e6PNj4o1Y6WfzeV5HwyVfo1NajYbt8LQsZkJ1CmP6KnpwXmR54EGx7ymhJ
+ * XMR: 8ANeBLpzv1ZM5VQYgcMm6S2EydUoGt4UyYxooXR1yhnxM2eAhyivXKT8wWosLxYQxjjQoeynkSMCcA2a4yvTbH8oMyM2cfY
  */
 constexpr const int kDefaultDonateLevel = 1;
 constexpr const int kMinimumDonateLevel = 0;

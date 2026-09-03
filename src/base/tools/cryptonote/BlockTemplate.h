@@ -98,6 +98,7 @@ public:
     inline uint64_t numHashes() const                       { return m_numHashes; }
     inline const Buffer &hashes() const                     { return m_hashes; }
     inline const Buffer &minerTxMerkleTreeBranch() const    { return m_minerTxMerkleTreeBranch; }
+    inline uint32_t minerTxMerkleTreePath() const           { return m_minerTxMerkleTreePath; }
     inline const uint8_t *rootHash() const                  { return m_rootHash; }
     inline bool hasProtocolTransaction() const              { return m_hasProtocolTx; }
 
@@ -110,13 +111,13 @@ public:
     }
 
     static void calculateMinerTxHash(const uint8_t *prefix_begin, const uint8_t *prefix_end, uint8_t *hash);
-    static void calculateRootHash(const uint8_t *prefix_begin, const uint8_t *prefix_end, const Buffer &miner_tx_merkle_tree_branch, uint8_t *root_hash);
+    static void calculateRootHash(const uint8_t *prefix_begin, const uint8_t *prefix_end, const Buffer &miner_tx_merkle_tree_branch, uint32_t miner_tx_merkle_tree_path, uint8_t *root_hash);
 
     bool parse(const Buffer &blocktemplate, const Coin &coin, bool hashes = kCalcHashes);
     bool parse(const char *blocktemplate, size_t size, const Coin &coin, bool hashes);
     bool parse(const rapidjson::Value &blocktemplate, const Coin &coin, bool hashes = kCalcHashes);
     bool parse(const String &blocktemplate, const Coin &coin, bool hashes = kCalcHashes);
-    void calculateMerkleTreeHash();
+    void calculateMerkleTreeHash(uint32_t index);
     void generateHashingBlob(Buffer &out) const;
 
 private:
@@ -125,7 +126,8 @@ private:
     inline void setOffset(Offset offset, size_t value)  { m_offsets[offset] = static_cast<uint32_t>(value); }
 
     bool parse(bool hashes);
-    inline uint64_t baseTransactionCount() const            { return (m_coin == Coin::SALVIUM) ? (m_hasProtocolTx ? 2 : 1) : 1; }
+    inline uint64_t baseTransactionCount() const            { return (m_coin == Coin::SALVIUM && m_hasProtocolTx) ? 2 : 1; }
+    inline uint64_t hashingBlobBaseTransactionCount() const { return (m_coin == Coin::SALVIUM && majorVersion() < 2) ? 1 : baseTransactionCount(); }
     bool parseSalviumOutput(BlobReader<true> &ar, uint8_t outputType, bool storeExtraData);
 
     Buffer m_blob;
@@ -155,6 +157,7 @@ private:
     uint64_t m_numHashes    = 0;
     Buffer m_hashes;
     Buffer m_minerTxMerkleTreeBranch;
+    uint32_t m_minerTxMerkleTreePath = 0;
     bool m_hasProtocolTx    = false;
     uint8_t m_rootHash[kHashSize]{};
     uint8_t m_carrotViewTag[3]{};

@@ -1,7 +1,14 @@
 on:
   push:
+    branches:
+      - combined
     tags:
-      - "v*"
+      - "sal-v*"
+  # Scheduled workflows run from the default branch, so this builds the
+  # merged Salvium + personal donation variant from combined.
+  schedule:
+    - cron: "17 1 * * 1"
+      timezone: "America/Denver"
   workflow_dispatch:
 
 name: Build and Release
@@ -51,8 +58,9 @@ jobs:
           sudo apt-get install -y git build-essential cmake libuv1-dev libssl-dev libhwloc-dev
       - name: Build
         run: |
-          cmake .
+          cmake . -DWITH_SALVIUM_TESTS=ON
           make -j$(nproc)
+          ctest --output-on-failure
           cp src/config.json .
           ./xmrig --version
           tar cfz ubuntu22.04-linux-x86_64.tar.gz xmrig config.json LICENSE
@@ -437,7 +445,7 @@ jobs:
       - uses: actions/checkout@v6
       - name: Build inside openSUSE Leap container
         run: |
-          docker run --rm -v ${{ github.workspace }}:/workspace -w /workspace opensuse/leap:15.6 /bin/bash -c "
+          docker run --rm -v ${{ github.workspace }}:/workspace -w /workspace opensuse/leap:16.0 /bin/bash -c "
             set -e
             zypper --non-interactive install gcc gcc-c++ make cmake tar gzip libopenssl-devel libuv-devel hwloc-devel
             cmake .
@@ -472,19 +480,91 @@ jobs:
       - build_rocky9
       - build_opensuse
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/combined' || startsWith(github.ref, 'refs/tags/sal-v'))
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v6
+      - name: Check out release source
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Check release source
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" == "refs/heads/combined" ]]; then
+            git fetch origin \
+              "+refs/heads/salvium:refs/remotes/origin/salvium" \
+              "+refs/heads/donation:refs/remotes/origin/donation"
+            if ! git merge-base --is-ancestor "origin/salvium" "$GITHUB_SHA"; then
+              echo "::error::Combined releases must contain the current Salvium branch."
+              exit 1
+            fi
+            if ! git merge-base --is-ancestor "origin/donation" "$GITHUB_SHA"; then
+              echo "::error::Combined releases must contain the current donation branch."
+              exit 1
+            fi
+          elif [[ "$GITHUB_REF" == refs/tags/sal-v* ]]; then
+            git fetch origin \
+              "+refs/heads/salvium:refs/remotes/origin/salvium"
+            if ! git merge-base --is-ancestor "$GITHUB_SHA" "origin/salvium"; then
+              echo "::error::SAL-only releases must be tagged from the Salvium branch."
+              exit 1
+            fi
+          else
+            echo "::error::Unsupported release source: $GITHUB_REF"
+            exit 1
+          fi
+
       - name: Download all artifacts
         uses: actions/download-artifact@v7
         with:
           path: artifacts
 
-      - name: Rename artifacts to release names
+      - name: Determine release tag
+        id: release_metadata
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
         run: |
-          VERSION=${GITHUB_REF_NAME}
+          if [[ "$GITHUB_REF" == "refs/heads/combined" ]]; then
+            VERSION=$(sed -nE 's/^#define APP_VERSION[[:space:]]+"([^"]+)".*/\1/p' src/version.h)
+            if [[ -z "$VERSION" ]]; then
+              echo "::error::Unable to read APP_VERSION from src/version.h."
+              exit 1
+            fi
+
+            EXISTING_TAG=$(git tag --points-at "$GITHUB_SHA" --list "v${VERSION}_Salvium-rc*" | sort -V | tail -n 1)
+            if [[ -n "$EXISTING_TAG" ]]; then
+              TAG="$EXISTING_TAG"
+            else
+              MAX_RC=0
+              VERSION_PATTERN=${VERSION//./\\.}
+              TAG_PATTERN="^v${VERSION_PATTERN}_Salvium-rc([0-9]+)$"
+              while IFS= read -r RELEASE_TAG; do
+                if [[ "$RELEASE_TAG" =~ $TAG_PATTERN ]]; then
+                  RC=${BASH_REMATCH[1]}
+                  if (( RC > MAX_RC )); then
+                    MAX_RC=$RC
+                  fi
+                fi
+              done < <(gh api --paginate "/repos/${GITHUB_REPOSITORY}/releases?per_page=100" --jq '.[].tag_name')
+              TAG="v${VERSION}_Salvium-rc$((MAX_RC + 1))"
+            fi
+            CHANNEL=combined
+          else
+            TAG="$GITHUB_REF_NAME"
+            CHANNEL=salvium
+          fi
+
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "channel=$CHANNEL" >> "$GITHUB_OUTPUT"
+          echo "Release channel: $CHANNEL"
+          echo "Release tag: $TAG"
+
+      - name: Rename artifacts to release names
+        env:
+          VERSION: ${{ steps.release_metadata.outputs.tag }}
+        run: |
           mkdir -p release
           cp artifacts/focal-x64/focal-x64.tar.gz                   release/xmrig-${VERSION}-focal-x64.tar.gz
           cp artifacts/ubuntu22.04-linux-x86_64/ubuntu22.04-linux-x86_64.tar.gz   release/xmrig-${VERSION}-ubuntu22.04-linux-x86_64.tar.gz
@@ -504,11 +584,25 @@ jobs:
           cp artifacts/opensuse-x64/opensuse-x64.tar.gz              release/xmrig-${VERSION}-opensuse-x64.tar.gz
 
       - name: Generate checksums
+        env:
+          RELEASE_CHANNEL: ${{ steps.release_metadata.outputs.channel }}
         run: |
           cd release
           sha256sum * > SHA256SUMS
           cat SHA256SUMS
-          echo '## SHA256 Checksums' > ../RELEASE_NOTES.md
+
+          if [[ "$RELEASE_CHANNEL" == "combined" ]]; then
+            echo '## Combined Salvium build' > ../RELEASE_NOTES.md
+            echo '' >> ../RELEASE_NOTES.md
+            echo 'These binaries were built from the `combined` branch and include both Salvium support and the personal donation layer maintained by this fork.' >> ../RELEASE_NOTES.md
+          else
+            echo '## SAL-only build' > ../RELEASE_NOTES.md
+            echo '' >> ../RELEASE_NOTES.md
+            echo 'These binaries were built from the `salvium` branch and retain upstream XMRig donation behavior.' >> ../RELEASE_NOTES.md
+          fi
+
+          echo '' >> ../RELEASE_NOTES.md
+          echo '## SHA256 Checksums' >> ../RELEASE_NOTES.md
           echo '' >> ../RELEASE_NOTES.md
           echo '| File | SHA256 |' >> ../RELEASE_NOTES.md
           echo '|------|--------|' >> ../RELEASE_NOTES.md
@@ -519,14 +613,29 @@ jobs:
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release_metadata.outputs.tag }}
+          RELEASE_CHANNEL: ${{ steps.release_metadata.outputs.channel }}
         run: |
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release edit "$GITHUB_REF_NAME" --notes-file RELEASE_NOTES.md
-            gh release upload "$GITHUB_REF_NAME" release/* --clobber
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release edit "$RELEASE_TAG" --title "$RELEASE_TAG" --notes-file RELEASE_NOTES.md
+            gh release upload "$RELEASE_TAG" release/* --clobber
           else
-            if [[ "$GITHUB_REF_NAME" == *-* ]]; then
-              gh release create "$GITHUB_REF_NAME" release/* --generate-notes --notes-file RELEASE_NOTES.md --prerelease
+            if [[ "$RELEASE_CHANNEL" == "combined" ]]; then
+              gh release create "$RELEASE_TAG" release/* \
+                --target "$GITHUB_SHA" \
+                --title "$RELEASE_TAG" \
+                --notes-file RELEASE_NOTES.md \
+                --latest
+            elif [[ "$RELEASE_TAG" == *-rc* || "$RELEASE_TAG" == *-beta* ]]; then
+              gh release create "$RELEASE_TAG" release/* \
+                --title "$RELEASE_TAG" \
+                --generate-notes \
+                --notes-file RELEASE_NOTES.md \
+                --prerelease
             else
-              gh release create "$GITHUB_REF_NAME" release/* --generate-notes --notes-file RELEASE_NOTES.md
+              gh release create "$RELEASE_TAG" release/* \
+                --title "$RELEASE_TAG" \
+                --generate-notes \
+                --notes-file RELEASE_NOTES.md
             fi
           fi

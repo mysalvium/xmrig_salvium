@@ -1,16 +1,18 @@
-:: Example batch file for mining Monero solo
+:: Example batch file for mining Salvium mainnet solo
 ::
 :: Format:
-::	xmrig.exe -o <node address>:<node port> -a rx/0 -u <wallet address> --daemon
+::	xmrig.exe -o <node address>:19081 --coin SAL -a rx/0 -u <SC1 wallet> --daemon
 ::
 :: Fields:
-::	node address		The host name of your monerod node or its IP address. It can also be a public node with RPC enabled, for example node.xmr.to
-::	node port 		The RPC port of your monerod node to connect to, usually 18081.
-::	wallet address		Check your Monero CLI or GUI wallet to see your wallet's address.
+::	node address		The IP address of your fully synced Salvium daemon
+::	node port		Salvium mainnet RPC normally uses port 19081
+::	SAL_WALLET		Your primary Salvium Carrot address, beginning with SC1
 ::
-:: Mining solo is the best way to help Monero network be more decentralized!
-:: But you will only get a payout when you find a block which can take more than a year for a single low-end PC.
+:: The example assumes salviumd runs on this machine. Do not expose an
+:: unrestricted daemon RPC port to the public internet.
 
 cd /d "%~dp0"
-xmrig.exe -o YOUR_NODE_IP:18081 -a rx/0 -u 48edfHu7V9Z84YzzMa6fUueoELZ9ZRXq9VetWzYGzKt52XU5xvqgzYnDK9URnRoJMk1j8nLwEVsaSWJ4fhdUyZijBGUicoD --daemon
+set "SAL_WALLET=YOUR_PRIMARY_SC1_CARROT_ADDRESS"
+
+xmrig.exe -o 127.0.0.1:19081 --coin SAL -a rx/0 -u %SAL_WALLET% --daemon
 pause
