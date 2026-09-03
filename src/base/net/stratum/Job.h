@@ -31,7 +31,9 @@
 #include <cstdint>
 
 #include "base/crypto/Algorithm.h"
+#include "base/net/stratum/DaemonTelemetry.h"
 #include "base/tools/Buffer.h"
+#include "base/tools/cryptonote/TemplateFamily.h"
 #include "base/tools/String.h"
 
 
@@ -41,6 +43,13 @@ namespace xmrig {
 class Job
 {
 public:
+    enum class ExtraNonceStatus : uint8_t {
+        UNSUPPORTED,
+        VERIFIED,
+        MISMATCH,
+        MISSING
+    };
+
     // Max blob size is 84 (75 fixed + 9 variable), aligned to 96. https://github.com/xmrig/xmrig/issues/1 Thanks fireice-uk.
     // SECOR increase requirements for blob size: https://github.com/xmrig/xmrig/issues/913
     // Haven (XHV) offshore increases requirements by adding pricing_record struct (192 bytes) to block_header.
@@ -61,7 +70,9 @@ public:
     bool setBlob(const char *blob);
     bool setSeedHash(const char *hash);
     bool setTarget(const char *target);
+    const char *extraNonceStatusName() const;
     size_t nonceOffset() const;
+    const char *templateSourceName() const;
     void setDiff(uint64_t diff);
     void setSigKey(const char *sig_key);
 
@@ -74,6 +85,9 @@ public:
     inline const String &extraNonce() const             { return m_extraNonce; }
     inline const String &id() const                     { return m_id; }
     inline const String &poolWallet() const             { return m_poolWallet; }
+    inline const String &prevHash() const               { return m_prevHash; }
+    inline const String &templateFamilyIdHex() const    { return m_templateFamilyIdHex; }
+    inline const TemplateFamilyId &templateFamilyId() const { return m_templateFamilyId; }
     inline const uint32_t *nonce() const                { return reinterpret_cast<const uint32_t*>(m_blob + nonceOffset()); }
     inline const uint8_t *blob() const                  { return m_blob; }
     inline size_t nonceSize() const                     { return (algorithm().family() == Algorithm::KAWPOW) ?  8 :  4; }
@@ -83,6 +97,7 @@ public:
     inline uint64_t diff() const                        { return m_diff; }
     inline uint64_t height() const                      { return m_height; }
     inline uint64_t nonceMask() const                   { return isNicehash() ? 0xFFFFFFULL : (nonceSize() == sizeof(uint64_t) ? (static_cast<uint64_t>(-1LL) >> (extraNonce().size() * 4)) : 0xFFFFFFFFULL); }
+    inline uint64_t receivedAt() const                  { return m_receivedAt; }
     inline uint64_t target() const                      { return m_target; }
     inline uint8_t *blob()                              { return m_blob; }
     inline uint8_t fixedByte() const                    { return *(m_blob + 42); }
@@ -93,9 +108,13 @@ public:
     inline void setBackend(uint32_t backend)            { m_backend = backend; }
     inline void setClientId(const String &id)           { m_clientId = id; }
     inline void setExtraNonce(const String &extraNonce) { m_extraNonce = extraNonce; }
+    inline void setExtraNonceStatus(ExtraNonceStatus status) { m_extraNonceStatus = status; }
     inline void setHeight(uint64_t height)              { m_height = height; }
     inline void setIndex(uint8_t index)                 { m_index = index; }
     inline void setPoolWallet(const String &poolWallet) { m_poolWallet = poolWallet; }
+    inline void setPrevHash(const String &prevHash)     { m_prevHash = prevHash; }
+    inline void setReceivedAt(uint64_t receivedAt)      { m_receivedAt = receivedAt; }
+    inline void setTemplateSource(TemplateSource source) { m_templateSource = source; }
 
 #   ifdef XMRIG_PROXY_PROJECT
     inline char *rawBlob()                              { return m_rawBlob; }
@@ -155,9 +174,15 @@ private:
     String m_extraNonce;
     String m_id;
     String m_poolWallet;
+    String m_prevHash;
+    String m_templateFamilyIdHex;
+    TemplateFamilyId m_templateFamilyId;
+    ExtraNonceStatus m_extraNonceStatus = ExtraNonceStatus::UNSUPPORTED;
+    TemplateSource m_templateSource     = TemplateSource::UNSUPPORTED;
     uint32_t m_backend  = 0;
     uint64_t m_diff     = 0;
     uint64_t m_height   = 0;
+    uint64_t m_receivedAt = 0;
     uint64_t m_target   = 0;
     uint8_t m_blob[kMaxBlobSize]{ 0 };
     uint8_t m_index     = 0;

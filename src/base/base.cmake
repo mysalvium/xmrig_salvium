@@ -53,11 +53,13 @@ set(HEADERS_BASE
     src/base/net/http/HttpListener.h
     src/base/net/stratum/BaseClient.h
     src/base/net/stratum/Client.h
+    src/base/net/stratum/DaemonTelemetry.h
     src/base/net/stratum/Job.h
     src/base/net/stratum/NetworkState.h
     src/base/net/stratum/Pool.h
     src/base/net/stratum/Pools.h
     src/base/net/stratum/ProxyUrl.h
+    src/base/net/stratum/SoloEffort.h
     src/base/net/stratum/Socks5.h
     src/base/net/stratum/strategies/FailoverStrategy.h
     src/base/net/stratum/strategies/SinglePoolStrategy.h
@@ -78,6 +80,7 @@ set(HEADERS_BASE
     src/base/tools/cryptonote/BlockTemplate.h
     src/base/tools/cryptonote/crypto-ops.h
     src/base/tools/cryptonote/Signatures.h
+    src/base/tools/cryptonote/TemplateFamily.h
     src/base/tools/cryptonote/umul128.h
     src/base/tools/cryptonote/WalletAddress.h
     src/base/tools/Cvt.h
@@ -121,11 +124,13 @@ set(SOURCES_BASE
     src/base/net/http/Http.cpp
     src/base/net/stratum/BaseClient.cpp
     src/base/net/stratum/Client.cpp
+    src/base/net/stratum/DaemonTelemetry.cpp
     src/base/net/stratum/Job.cpp
     src/base/net/stratum/NetworkState.cpp
     src/base/net/stratum/Pool.cpp
     src/base/net/stratum/Pools.cpp
     src/base/net/stratum/ProxyUrl.cpp
+    src/base/net/stratum/SoloEffort.cpp
     src/base/net/stratum/Socks5.cpp
     src/base/net/stratum/strategies/FailoverStrategy.cpp
     src/base/net/stratum/strategies/SinglePoolStrategy.cpp
@@ -138,6 +143,7 @@ set(SOURCES_BASE
     src/base/tools/cryptonote/crypto-ops-data.c
     src/base/tools/cryptonote/crypto-ops.c
     src/base/tools/cryptonote/Signatures.cpp
+    src/base/tools/cryptonote/TemplateFamily.cpp
     src/base/tools/cryptonote/WalletAddress.cpp
     src/base/tools/Cvt.cpp
     src/base/tools/String.cpp

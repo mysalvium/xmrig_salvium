@@ -26,6 +26,7 @@ option(WITH_ADL             "Enable ADL (AMD Display Library) or sysfs support (
 option(WITH_STRICT_CACHE    "Enable strict checks for OpenCL cache" ON)
 option(WITH_INTERLEAVE_DEBUG_LOG "Enable debug log for threads interleave" OFF)
 option(WITH_PROFILING       "Enable profiling for developers" OFF)
+option(WITH_SALVIUM_TESTS   "Build Salvium regression tests" OFF)
 option(WITH_SSE4_1          "Enable SSE 4.1 for Blake2" ON)
 option(WITH_AVX2            "Enable AVX2 for Blake2" ON)
 option(WITH_VAES            "Enable VAES instructions for Cryptonight" ON)
@@ -239,6 +240,74 @@ endif()
 add_executable(${CMAKE_PROJECT_NAME} ${HEADERS} ${SOURCES} ${SOURCES_OS} ${HEADERS_CRYPTO} ${SOURCES_CRYPTO} ${SOURCES_SYSLOG} ${TLS_SOURCES} ${XMRIG_ASM_SOURCES})
 target_link_libraries(${CMAKE_PROJECT_NAME} ${XMRIG_ASM_LIBRARY} ${OPENSSL_LIBRARIES} ${UV_LIBRARIES} ${EXTRA_LIBS} ${CPUID_LIB} ${ARGON2_LIBRARY} ${ETHASH_LIBRARY} ${GHOSTRIDER_LIBRARY})
 
+if (WITH_SALVIUM_TESTS)
+    enable_testing()
+
+    add_executable(salvium_block_template_tests
+        tests/salvium_block_template_tests.cpp
+        src/base/crypto/keccak.cpp
+        src/base/tools/cryptonote/BlockTemplate.cpp
+        src/base/tools/Cvt.cpp
+        src/base/tools/String.cpp
+        )
+
+    target_include_directories(salvium_block_template_tests PRIVATE src src/3rdparty)
+
+    add_executable(salvium_algorithm_tests
+        tests/salvium_algorithm_tests.cpp
+        src/base/crypto/Algorithm.cpp
+        )
+
+    target_include_directories(salvium_algorithm_tests PRIVATE src src/3rdparty)
+
+    add_executable(salvium_template_family_tests
+        tests/salvium_template_family_tests.cpp
+        src/base/net/stratum/DaemonTelemetry.cpp
+        src/base/tools/cryptonote/TemplateFamily.cpp
+        src/base/crypto/keccak.cpp
+        )
+
+    target_include_directories(salvium_template_family_tests PRIVATE src src/3rdparty)
+
+    add_executable(salvium_solo_effort_tests
+        tests/salvium_solo_effort_tests.cpp
+        src/base/net/stratum/SoloEffort.cpp
+        )
+
+    target_include_directories(salvium_solo_effort_tests PRIVATE src src/3rdparty)
+
+    add_executable(salvium_zmq_hint_tests
+        tests/salvium_zmq_hint_tests.cpp
+        )
+
+    target_include_directories(salvium_zmq_hint_tests PRIVATE src src/3rdparty)
+
+    add_test(
+        NAME salvium-mainnet-block-templates
+        COMMAND salvium_block_template_tests "${CMAKE_SOURCE_DIR}/tests/fixtures/salvium-mainnet-blocks.json"
+        )
+
+    add_test(
+        NAME salvium-randomx-aliases
+        COMMAND salvium_algorithm_tests
+        )
+
+    add_test(
+        NAME salvium-template-family
+        COMMAND salvium_template_family_tests
+        )
+
+    add_test(
+        NAME salvium-solo-effort
+        COMMAND salvium_solo_effort_tests
+        )
+
+    add_test(
+        NAME salvium-zmq-hint
+        COMMAND salvium_zmq_hint_tests
+        )
+endif()
+
 if (WIN32)
     if (NOT ARM_TARGET)
         add_custom_command(TARGET ${CMAKE_PROJECT_NAME} POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_SOURCE_DIR}/bin/WinRing0/WinRing0x64.sys" $<TARGET_FILE_DIR:${CMAKE_PROJECT_NAME}>)
@@ -248,7 +317,14 @@ if (WIN32)
     add_custom_command(TARGET ${CMAKE_PROJECT_NAME} POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_SOURCE_DIR}/scripts/benchmark_10M.cmd" $<TARGET_FILE_DIR:${CMAKE_PROJECT_NAME}>)
     add_custom_command(TARGET ${CMAKE_PROJECT_NAME} POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_SOURCE_DIR}/scripts/pool_mine_example.cmd" $<TARGET_FILE_DIR:${CMAKE_PROJECT_NAME}>)
     add_custom_command(TARGET ${CMAKE_PROJECT_NAME} POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_SOURCE_DIR}/scripts/solo_mine_example.cmd" $<TARGET_FILE_DIR:${CMAKE_PROJECT_NAME}>)
+    add_custom_command(TARGET ${CMAKE_PROJECT_NAME} POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_SOURCE_DIR}/scripts/tune-salvium-randomx.ps1" $<TARGET_FILE_DIR:${CMAKE_PROJECT_NAME}>)
+    add_custom_command(TARGET ${CMAKE_PROJECT_NAME} POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_SOURCE_DIR}/docs/SALVIUM_RANDOMX_TUNER.md" $<TARGET_FILE_DIR:${CMAKE_PROJECT_NAME}>)
     add_custom_command(TARGET ${CMAKE_PROJECT_NAME} POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_SOURCE_DIR}/scripts/rtm_ghostrider_example.cmd" $<TARGET_FILE_DIR:${CMAKE_PROJECT_NAME}>)
+endif()
+
+if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    add_custom_command(TARGET ${CMAKE_PROJECT_NAME} POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_SOURCE_DIR}/scripts/tune-salvium-randomx.sh" $<TARGET_FILE_DIR:${CMAKE_PROJECT_NAME}>)
+    add_custom_command(TARGET ${CMAKE_PROJECT_NAME} POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_SOURCE_DIR}/docs/SALVIUM_RANDOMX_TUNER_LINUX.md" $<TARGET_FILE_DIR:${CMAKE_PROJECT_NAME}>)
 endif()
 
 if (CMAKE_CXX_COMPILER_ID MATCHES Clang AND CMAKE_BUILD_TYPE STREQUAL Release AND NOT CMAKE_GENERATOR STREQUAL Xcode)

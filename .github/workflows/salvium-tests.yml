@@ -1,0 +1,53 @@
+name: Salvium mainnet regression tests
+
+on:
+  push:
+    branches:
+      - salvium
+      - combined
+  pull_request:
+    branches:
+      - salvium
+      - combined
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: salvium-tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  public-salvium:
+    name: production parser and rx/0 aliases
+    runs-on: ubuntu-22.04
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake libuv1-dev
+
+      - name: Configure focused test target
+        run: |
+          cmake -S . -B build-salvium-tests \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DWITH_SALVIUM_TESTS=ON \
+            -DWITH_HWLOC=OFF \
+            -DWITH_OPENCL=OFF \
+            -DWITH_CUDA=OFF \
+            -DWITH_TLS=OFF
+
+      - name: Build focused test targets
+        run: |
+          cmake --build build-salvium-tests \
+            --target salvium_block_template_tests salvium_algorithm_tests \
+            --parallel
+
+      - name: Run offline Salvium regressions
+        run: |
+          ctest --test-dir build-salvium-tests \
+            --output-on-failure

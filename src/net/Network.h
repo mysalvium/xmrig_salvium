@@ -73,6 +73,7 @@ protected:
 private:
     constexpr static int kTickInterval = 1 * 1000;
 
+    void sampleSoloEffort(uint64_t now);
     void setJob(IClient *client, const Job &job, bool donate);
     void tick();
 

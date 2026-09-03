@@ -25,11 +25,13 @@
 #include "base/kernel/interfaces/IHttpListener.h"
 #include "base/kernel/interfaces/ITimerListener.h"
 #include "base/net/stratum/BaseClient.h"
+#include "base/net/stratum/DaemonTelemetry.h"
 #include "base/net/tools/Storage.h"
 #include "base/tools/cryptonote/BlockTemplate.h"
 #include "base/tools/cryptonote/WalletAddress.h"
 
 
+#include <map>
 #include <memory>
 
 
@@ -83,12 +85,12 @@ protected:
 
 private:
     bool isOutdated(uint64_t height, const char *hash) const;
-    bool parseJob(const rapidjson::Value &params, int *code);
+    bool parseJob(const rapidjson::Value &params, int *code, const DaemonTemplateRequest *request);
     bool parseResponse(int64_t id, const rapidjson::Value &result, const rapidjson::Value &error);
-    int64_t getBlockTemplate();
+    int64_t getBlockTemplate(TemplateSource source);
     int64_t rpcSend(const rapidjson::Document &doc, const std::map<std::string, std::string> &headers = {});
-    void retry();
-    void send(const char *path);
+    void retry(int64_t failedRequestId = -1);
+    void send(const char *path, TemplateSource source);
     void setState(SocketState state);
 
     enum {
@@ -100,6 +102,7 @@ private:
     Coin m_coin;
     std::shared_ptr<IHttpListener> m_httpListener;
     String m_blockhashingblob;
+    DaemonTemplateRequests m_blocktemplateRequests;
     String m_blocktemplateRequestHash;
     String m_blocktemplateStr;
     String m_currentJobId;
@@ -110,6 +113,7 @@ private:
     Timer *m_timer;
     uint64_t m_blocktemplateRequestHeight = 0;
     WalletAddress m_walletAddress;
+    bool m_zmqHintWarned = false;
 
 private:
     static inline DaemonClient* getClient(void* data) { return m_storage.get(data); }

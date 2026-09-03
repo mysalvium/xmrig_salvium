@@ -89,6 +89,8 @@ or place a repository-specific fix on the branch that owns the behavior.
 - Salvium output variants, asset identifiers, unlock times, tags, and anchors.
 - Salvium transaction-tree construction.
 - Salvium fixtures and regression tests.
+- The reviewed disposition of upstream Salvium proposals, including
+  `docs/SALVIUM_PR_3508.md`.
 - SAL-facing configuration and user documentation.
 - SAL-only build and release automation.
 
@@ -360,6 +362,25 @@ At minimum, validate:
 - Salvium block-template fixtures pass.
 - Monero/FCMP behavior remains aligned with the upstream base.
 - Donation source matches `stock`.
+
+Build and run the offline mainnet fixture suite with:
+
+```powershell
+cmake -S . -B build-salvium-tests -DWITH_SALVIUM_TESTS=ON
+cmake --build build-salvium-tests --config Release `
+    --target salvium_block_template_tests salvium_algorithm_tests --parallel
+ctest --test-dir build-salvium-tests -C Release --output-on-failure
+```
+
+The fixtures are public, immutable mainnet `get_block` responses. They must
+remain sanitized: no wallet addresses, credentials, private keys, local
+configuration, or donation-layer data. The test is deliberately offline after
+capture so CI and local validation do not depend on a live daemon.
+
+The same CMake option also builds `salvium_algorithm_tests`. Salvium-friendly
+algorithm names must resolve to the canonical `Algorithm::RX_0` identifier;
+do not introduce a separate RandomX variant unless its behavior is genuinely
+different and every CPU, OpenCL, and CUDA path is implemented and tested.
 
 Verify the last invariant with:
 

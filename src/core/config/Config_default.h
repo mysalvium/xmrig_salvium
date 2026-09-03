@@ -90,14 +90,31 @@ R"===(
     "log-file": null,
     "pools": [
         {
-            "algo": null,
-            "coin": null,
-            "url": "donate.v2.xmrig.com:3333",
-            "user": "YOUR_WALLET_ADDRESS",
+            "algo": "rx/0",
+            "coin": "SAL",
+            "url": "sal-us.kryptex.network:7028",
+            "user": "YOUR_PRIMARY_SC1_CARROT_ADDRESS.YOUR_WORKER_NAME",
             "pass": "x",
             "rig-id": null,
             "nicehash": false,
-            "keepalive": false,
+            "keepalive": true,
+            "enabled": true,
+            "tls": false,
+            "tls-fingerprint": null,
+            "daemon": false,
+            "socks5": null,
+            "self-select": null,
+            "submit-to-origin": false
+        },
+        {
+            "algo": "rx/0",
+            "coin": "SAL",
+            "url": "stratum-eu.rplant.xyz:7130",
+            "user": "YOUR_PRIMARY_SC1_CARROT_ADDRESS.YOUR_WORKER_NAME",
+            "pass": "x",
+            "rig-id": null,
+            "nicehash": false,
+            "keepalive": true,
             "enabled": true,
             "tls": false,
             "tls-fingerprint": null,
@@ -121,6 +138,10 @@ R"===(
         "ciphers": null,
         "ciphersuites": null,
         "dhparam": null
+    },
+    "dns": {
+        "ip_version": 0,
+        "ttl": 30
     },
     "user-agent": null,
     "verbose": 0,

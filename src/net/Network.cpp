@@ -165,8 +165,14 @@ void xmrig::Network::onConfigChanged(Config *config, Config *previousConfig)
 
 void xmrig::Network::onJob(IStrategy *strategy, IClient *client, const Job &job, const rapidjson::Value &)
 {
+    sampleSoloEffort(Chrono::steadyMSecs());
+
     if (m_donate && m_donate->isActive() && m_donate != strategy) {
         return;
+    }
+
+    if (m_donate != strategy && client->pool().mode() == Pool::MODE_DAEMON) {
+        m_state->setSoloJob(job.diff());
     }
 
     setJob(client, job, m_donate == strategy);
@@ -223,8 +229,17 @@ void xmrig::Network::onPause(IStrategy *strategy)
 }
 
 
-void xmrig::Network::onResultAccepted(IStrategy *, IClient *, const SubmitResult &result, const char *error)
+void xmrig::Network::onResultAccepted(IStrategy *strategy, IClient *client, const SubmitResult &result, const char *error)
 {
+    if (strategy == m_strategy && client->pool().mode() == Pool::MODE_DAEMON) {
+        const uint64_t now = Chrono::steadyMSecs();
+        sampleSoloEffort(now);
+
+        if (!error) {
+            m_state->setSoloBlockFound(result.height, now);
+        }
+    }
+
     uint64_t diff     = result.diff;
     const char *scale = NetworkState::scaleDiff(diff);
 
@@ -246,6 +261,15 @@ void xmrig::Network::onVerifyAlgorithm(IStrategy *, const IClient *, const Algor
 
         return;
     }
+}
+
+
+void xmrig::Network::sampleSoloEffort(uint64_t now)
+{
+    const bool active = m_state->isSoloMode() && m_strategy->isActive() &&
+                        (!m_donate || !m_donate->isActive()) && m_controller->miner()->isEnabled();
+
+    m_state->sampleSoloEffort(now, active ? m_controller->miner()->hashRate() : 0.0, active);
 }
 
 
@@ -287,8 +311,10 @@ void xmrig::Network::setJob(IClient *client, const Job &job, bool donate)
             snprintf(height_buf, sizeof(height_buf), " height " WHITE_BOLD("%" PRIu64), job.height());
         }
 
+        const char *algorithmName = client->pool().coin().displayAlgorithmName(job.algorithm());
+
         LOG_INFO("%s " MAGENTA_BOLD("new job") " from " WHITE_BOLD("%s:%d%s") " diff " WHITE_BOLD("%" PRIu64 "%s") " algo " WHITE_BOLD("%s") "%s%s",
-                 Tags::network(), client->pool().host().data(), client->pool().port(), zmq_buf, diff, scale, job.algorithm().name(), height_buf, tx_buf);
+                 Tags::network(), client->pool().host().data(), client->pool().port(), zmq_buf, diff, scale, algorithmName, height_buf, tx_buf);
     }
 
     if (!donate && m_donate) {
@@ -303,6 +329,7 @@ void xmrig::Network::tick()
 {
     const uint64_t now = Chrono::steadyMSecs();
 
+    sampleSoloEffort(now);
     m_strategy->tick(now);
 
     if (m_donate) {

@@ -148,7 +148,33 @@ Architectures: x86, x86-64, ARMv7, ARMv8, RISC-V (rv64gc).
 
 ## Testing
 
-No external test suite. Validation is done via:
+General validation includes:
+
 - Built-in algorithm self-tests (`src/crypto/cn/CryptoNight_test.h`)
 - Built-in benchmark mode (`-DWITH_BENCHMARK`)
 - CPU feature detection tests (`src/3rdparty/argon2/arch/x86_64/src/test-feature-*.c`)
+
+The `salvium` and `combined` branches also own a focused production-parser
+regression suite backed by sanitized, immutable Salvium mainnet block blobs:
+
+```bash
+cmake -S . -B build-salvium-tests -DWITH_SALVIUM_TESTS=ON
+cmake --build build-salvium-tests --config Release --target salvium_block_template_tests salvium_algorithm_tests --parallel
+ctest --test-dir build-salvium-tests -C Release --output-on-failure
+```
+
+The suite and fixture provenance are in
+`tests/salvium_block_template_tests.cpp` and
+`tests/fixtures/salvium-mainnet-blocks.json`. It must remain offline and must
+not contain wallet addresses, credentials, private keys, or donation-layer
+data. Refresh fixtures only from public mainnet `get_block` responses and
+retain the canonical block and transaction hashes as assertions.
+
+The same CMake option builds `salvium_algorithm_tests`. The accepted names
+`rx/salvium`, `randomx/salvium`, and `randomsalvium` are compatibility aliases
+for canonical `Algorithm::RX_0`; they are not a separate RandomX variant.
+Keep every backend on the existing `RX_0` path.
+
+The complete review of SomeRandomCryptoGuy's upstream work is recorded in
+`docs/SALVIUM_PR_3508.md`. Recheck the live open and closed PR inventory
+before claiming that reconciliation is current.

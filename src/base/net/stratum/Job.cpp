@@ -82,6 +82,9 @@ bool xmrig::Job::setBlob(const char *blob)
         m_nicehash = true;
     }
 
+    m_templateFamilyId    = xmrig::templateFamilyId(m_blob, size, nonceOffset(), nonceSize());
+    m_templateFamilyIdHex = Cvt::toHex(m_templateFamilyId.data, sizeof(m_templateFamilyId.data));
+
 #   ifdef XMRIG_PROXY_PROJECT
     memset(m_rawBlob, 0, sizeof(m_rawBlob));
     memcpy(m_rawBlob, blob, size * 2);
@@ -89,6 +92,24 @@ bool xmrig::Job::setBlob(const char *blob)
 
     m_size = size;
     return true;
+}
+
+
+const char *xmrig::Job::extraNonceStatusName() const
+{
+    switch (m_extraNonceStatus) {
+    case ExtraNonceStatus::VERIFIED:
+        return "verified";
+
+    case ExtraNonceStatus::MISMATCH:
+        return "mismatch";
+
+    case ExtraNonceStatus::MISSING:
+        return "missing";
+
+    default:
+        return "unsupported";
+    }
 }
 
 
@@ -173,6 +194,21 @@ size_t xmrig::Job::nonceOffset() const
 }
 
 
+const char *xmrig::Job::templateSourceName() const
+{
+    switch (m_templateSource) {
+    case xmrig::TemplateSource::POLL:
+        return "poll";
+
+    case xmrig::TemplateSource::ZMQ:
+        return "zmq";
+
+    default:
+        return "unsupported";
+    }
+}
+
+
 void xmrig::Job::setDiff(uint64_t diff)
 {
     m_diff   = diff;
@@ -243,6 +279,12 @@ void xmrig::Job::copy(const Job &other)
     m_seed       = other.m_seed;
     m_extraNonce = other.m_extraNonce;
     m_poolWallet = other.m_poolWallet;
+    m_prevHash   = other.m_prevHash;
+    m_templateFamilyIdHex = other.m_templateFamilyIdHex;
+    m_templateFamilyId    = other.m_templateFamilyId;
+    m_extraNonceStatus    = other.m_extraNonceStatus;
+    m_templateSource      = other.m_templateSource;
+    m_receivedAt          = other.m_receivedAt;
 
     memcpy(m_blob, other.m_blob, sizeof(m_blob));
 
@@ -295,6 +337,12 @@ void xmrig::Job::move(Job &&other)
     m_seed       = std::move(other.m_seed);
     m_extraNonce = std::move(other.m_extraNonce);
     m_poolWallet = std::move(other.m_poolWallet);
+    m_prevHash   = std::move(other.m_prevHash);
+    m_templateFamilyIdHex = std::move(other.m_templateFamilyIdHex);
+    m_templateFamilyId    = other.m_templateFamilyId;
+    m_extraNonceStatus    = other.m_extraNonceStatus;
+    m_templateSource      = other.m_templateSource;
+    m_receivedAt          = other.m_receivedAt;
 
     memcpy(m_blob, other.m_blob, sizeof(m_blob));
 
