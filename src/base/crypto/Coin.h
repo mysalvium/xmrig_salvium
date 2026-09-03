@@ -60,6 +60,7 @@ public:
     inline bool isValid() const                                                 { return m_id != INVALID; }
     inline Id id() const                                                        { return m_id; }
     inline const char *tag() const                                              { return tag(m_id); }
+    inline const char *displayAlgorithmName(const Algorithm &algorithm) const    { return (m_id == SALVIUM && algorithm == Algorithm::RX_0) ? "rx/salvium" : algorithm.name(); }
     inline double decimal(uint64_t amount) const                                { return static_cast<double>(amount) / units(); }
 
     Algorithm algorithm(uint8_t blobVersion = 255) const;

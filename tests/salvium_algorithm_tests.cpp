@@ -6,6 +6,7 @@
  */
 
 #include "base/crypto/Algorithm.h"
+#include "base/crypto/Coin.h"
 
 
 #include <cstring>
@@ -39,6 +40,38 @@ int testAlias(const char *name)
 }
 
 
+int testDisplayNames()
+{
+    const xmrig::Algorithm randomX(xmrig::Algorithm::RX_0);
+    const xmrig::Algorithm randomWow(xmrig::Algorithm::RX_WOW);
+    const xmrig::Coin salvium(xmrig::Coin::SALVIUM);
+    const xmrig::Coin monero(xmrig::Coin::MONERO);
+    int failures = 0;
+
+    if (std::strcmp(salvium.displayAlgorithmName(randomX), "rx/salvium") != 0) {
+        std::cerr << "FAIL SAL RX_0 display name is not rx/salvium" << std::endl;
+        ++failures;
+    }
+
+    if (xmrig::Algorithm(salvium.displayAlgorithmName(randomX)) != xmrig::Algorithm::RX_0) {
+        std::cerr << "FAIL SAL display name does not resolve to RX_0" << std::endl;
+        ++failures;
+    }
+
+    if (std::strcmp(monero.displayAlgorithmName(randomX), xmrig::Algorithm::kRX_0) != 0) {
+        std::cerr << "FAIL non-SAL RX_0 display name changed" << std::endl;
+        ++failures;
+    }
+
+    if (std::strcmp(salvium.displayAlgorithmName(randomWow), xmrig::Algorithm::kRX_WOW) != 0) {
+        std::cerr << "FAIL non-RX_0 Salvium display name changed" << std::endl;
+        ++failures;
+    }
+
+    return failures;
+}
+
+
 } // namespace
 
 
@@ -56,11 +89,13 @@ int main()
         failures += testAlias(alias);
     }
 
+    failures += testDisplayNames();
+
     if (failures != 0) {
         std::cerr << failures << " Salvium RandomX alias assertion(s) failed" << std::endl;
         return 1;
     }
 
-    std::cout << "Salvium aliases resolve to the canonical rx/0 backend" << std::endl;
+    std::cout << "Salvium aliases and display branding preserve the canonical rx/0 backend" << std::endl;
     return 0;
 }

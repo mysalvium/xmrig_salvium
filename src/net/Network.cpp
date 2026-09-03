@@ -287,8 +287,10 @@ void xmrig::Network::setJob(IClient *client, const Job &job, bool donate)
             snprintf(height_buf, sizeof(height_buf), " height " WHITE_BOLD("%" PRIu64), job.height());
         }
 
+        const char *algorithmName = client->pool().coin().displayAlgorithmName(job.algorithm());
+
         LOG_INFO("%s " MAGENTA_BOLD("new job") " from " WHITE_BOLD("%s:%d%s") " diff " WHITE_BOLD("%" PRIu64 "%s") " algo " WHITE_BOLD("%s") "%s%s",
-                 Tags::network(), client->pool().host().data(), client->pool().port(), zmq_buf, diff, scale, job.algorithm().name(), height_buf, tx_buf);
+                 Tags::network(), client->pool().host().data(), client->pool().port(), zmq_buf, diff, scale, algorithmName, height_buf, tx_buf);
     }
 
     if (!donate && m_donate) {

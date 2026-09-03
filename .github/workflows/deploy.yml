@@ -38,8 +38,11 @@ jobs:
             cmake .
             make -j\$(nproc)
             cp src/config.json .
+            cp scripts/tune-salvium-randomx.sh .
+            cp docs/SALVIUM_RANDOMX_TUNER_LINUX.md .
+            chmod +x tune-salvium-randomx.sh
             ./xmrig --version
-            tar cfz focal-x64.tar.gz xmrig config.json LICENSE
+            tar cfz focal-x64.tar.gz xmrig config.json tune-salvium-randomx.sh SALVIUM_RANDOMX_TUNER_LINUX.md LICENSE
           "
       - uses: actions/upload-artifact@v6
         with:
@@ -62,8 +65,11 @@ jobs:
           make -j$(nproc)
           ctest --output-on-failure
           cp src/config.json .
+          cp scripts/tune-salvium-randomx.sh .
+          cp docs/SALVIUM_RANDOMX_TUNER_LINUX.md .
+          chmod +x tune-salvium-randomx.sh
           ./xmrig --version
-          tar cfz ubuntu22.04-linux-x86_64.tar.gz xmrig config.json LICENSE
+          tar cfz ubuntu22.04-linux-x86_64.tar.gz xmrig config.json tune-salvium-randomx.sh SALVIUM_RANDOMX_TUNER_LINUX.md LICENSE
       - uses: actions/upload-artifact@v6
         with:
           name: ubuntu22.04-linux-x86_64
@@ -88,7 +94,10 @@ jobs:
       - name: Package
         run: |
           cp src/config.json .
-          tar cfz ubuntu22.04-linux-aarch64.tar.gz xmrig config.json LICENSE
+          cp scripts/tune-salvium-randomx.sh .
+          cp docs/SALVIUM_RANDOMX_TUNER_LINUX.md .
+          chmod +x tune-salvium-randomx.sh
+          tar cfz ubuntu22.04-linux-aarch64.tar.gz xmrig config.json tune-salvium-randomx.sh SALVIUM_RANDOMX_TUNER_LINUX.md LICENSE
       - uses: actions/upload-artifact@v6
         with:
           name: ubuntu22.04-linux-aarch64
@@ -109,8 +118,11 @@ jobs:
           cmake .
           make -j$(nproc)
           cp src/config.json .
+          cp scripts/tune-salvium-randomx.sh .
+          cp docs/SALVIUM_RANDOMX_TUNER_LINUX.md .
+          chmod +x tune-salvium-randomx.sh
           ./xmrig --version
-          tar cfz noble-x64.tar.gz xmrig config.json LICENSE
+          tar cfz noble-x64.tar.gz xmrig config.json tune-salvium-randomx.sh SALVIUM_RANDOMX_TUNER_LINUX.md LICENSE
       - uses: actions/upload-artifact@v6
         with:
           name: noble-x64
@@ -142,8 +154,11 @@ jobs:
           /opt/cmake-3.27.9-linux-x86_64/bin/cmake . -DXMRIG_DEPS=scripts/deps
           make -j$(nproc)
           cp src/config.json .
+          cp scripts/tune-salvium-randomx.sh .
+          cp docs/SALVIUM_RANDOMX_TUNER_LINUX.md .
+          chmod +x tune-salvium-randomx.sh
           ./xmrig --version
-          tar cfz linux-static-x64.tar.gz xmrig config.json LICENSE
+          tar cfz linux-static-x64.tar.gz xmrig config.json tune-salvium-randomx.sh SALVIUM_RANDOMX_TUNER_LINUX.md LICENSE
           SCRIPT
           chmod +x /tmp/docker/script.sh
           docker run --rm -i -v /tmp/docker:/tmp/docker -v "${{ github.workspace }}":/workspace ubuntu:12.04 /bin/bash /tmp/docker/script.sh
@@ -291,7 +306,9 @@ jobs:
           Copy-Item src\config.json -Destination .
           Copy-Item bin\WinRing0\WinRing0x64.sys -Destination .
           Copy-Item bin\WinRing0\LICENSE -Destination WinRing0-LICENSE
-          Compress-Archive -Path xmrig.exe, config.json, WinRing0x64.sys, LICENSE, WinRing0-LICENSE -DestinationPath windows-x64.zip
+          Copy-Item scripts\tune-salvium-randomx.ps1 -Destination .
+          Copy-Item docs\SALVIUM_RANDOMX_TUNER.md -Destination .
+          Compress-Archive -Path xmrig.exe, config.json, tune-salvium-randomx.ps1, SALVIUM_RANDOMX_TUNER.md, WinRing0x64.sys, LICENSE, WinRing0-LICENSE -DestinationPath windows-x64.zip
       - uses: actions/upload-artifact@v6
         with:
           name: windows-x64
@@ -326,7 +343,9 @@ jobs:
           ./xmrig.exe --version
           cp bin/WinRing0/WinRing0x64.sys .
           cp bin/WinRing0/LICENSE WinRing0-LICENSE
-          7z a -tzip -mx windows-gcc-x64.zip xmrig.exe config.json WinRing0x64.sys LICENSE WinRing0-LICENSE
+          cp scripts/tune-salvium-randomx.ps1 .
+          cp docs/SALVIUM_RANDOMX_TUNER.md .
+          7z a -tzip -mx windows-gcc-x64.zip xmrig.exe config.json tune-salvium-randomx.ps1 SALVIUM_RANDOMX_TUNER.md WinRing0x64.sys LICENSE WinRing0-LICENSE
       - uses: actions/upload-artifact@v6
         with:
           name: windows-gcc-x64
@@ -351,7 +370,10 @@ jobs:
       - name: Package
         run: |
           cp src/config.json .
-          tar cfz linux-arm64.tar.gz xmrig config.json LICENSE
+          cp scripts/tune-salvium-randomx.sh .
+          cp docs/SALVIUM_RANDOMX_TUNER_LINUX.md .
+          chmod +x tune-salvium-randomx.sh
+          tar cfz linux-arm64.tar.gz xmrig config.json tune-salvium-randomx.sh SALVIUM_RANDOMX_TUNER_LINUX.md LICENSE
       - uses: actions/upload-artifact@v6
         with:
           name: linux-arm64
@@ -373,8 +395,11 @@ jobs:
             cmake .
             make -j\$(nproc)
             cp src/config.json .
+            cp scripts/tune-salvium-randomx.sh .
+            cp docs/SALVIUM_RANDOMX_TUNER_LINUX.md .
+            chmod +x tune-salvium-randomx.sh
             ./xmrig --version
-            tar cfz debian12-x64.tar.gz xmrig config.json LICENSE
+            tar cfz debian12-x64.tar.gz xmrig config.json tune-salvium-randomx.sh SALVIUM_RANDOMX_TUNER_LINUX.md LICENSE
           "
       - uses: actions/upload-artifact@v6
         with:
@@ -395,8 +420,11 @@ jobs:
             cmake . -DBUILD_STATIC=ON -DWITH_HWLOC=OFF
             make -j\$(nproc)
             cp src/config.json .
+            cp scripts/tune-salvium-randomx.sh .
+            cp docs/SALVIUM_RANDOMX_TUNER_LINUX.md .
+            chmod +x tune-salvium-randomx.sh
             ./xmrig --version
-            tar cfz alpine-x64.tar.gz xmrig config.json LICENSE
+            tar cfz alpine-x64.tar.gz xmrig config.json tune-salvium-randomx.sh SALVIUM_RANDOMX_TUNER_LINUX.md LICENSE
           "
       - uses: actions/upload-artifact@v6
         with:
@@ -429,8 +457,11 @@ jobs:
             cmake . -DCMAKE_PREFIX_PATH=/usr/local
             make -j\$(nproc)
             cp src/config.json .
+            cp scripts/tune-salvium-randomx.sh .
+            cp docs/SALVIUM_RANDOMX_TUNER_LINUX.md .
+            chmod +x tune-salvium-randomx.sh
             ./xmrig --version
-            tar cfz rocky9-x64.tar.gz xmrig config.json LICENSE
+            tar cfz rocky9-x64.tar.gz xmrig config.json tune-salvium-randomx.sh SALVIUM_RANDOMX_TUNER_LINUX.md LICENSE
           "
       - uses: actions/upload-artifact@v6
         with:
@@ -451,8 +482,11 @@ jobs:
             cmake .
             make -j\$(nproc)
             cp src/config.json .
+            cp scripts/tune-salvium-randomx.sh .
+            cp docs/SALVIUM_RANDOMX_TUNER_LINUX.md .
+            chmod +x tune-salvium-randomx.sh
             ./xmrig --version
-            tar cfz opensuse-x64.tar.gz xmrig config.json LICENSE
+            tar cfz opensuse-x64.tar.gz xmrig config.json tune-salvium-randomx.sh SALVIUM_RANDOMX_TUNER_LINUX.md LICENSE
           "
       - uses: actions/upload-artifact@v6
         with:

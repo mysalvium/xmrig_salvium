@@ -131,6 +131,24 @@ The disposition of every commit and changed area in SomeRandomCryptoGuy's
 upstream proposal is recorded in
 [`docs/SALVIUM_PR_3508.md`](docs/SALVIUM_PR_3508.md).
 
+### RandomX CPU tuners
+
+The credential-free Windows
+[`scripts/tune-salvium-randomx.ps1`](scripts/tune-salvium-randomx.ps1)
+benchmark controller can compare P-core/E-core affinities, RandomX scratchpad
+prefetch modes, CPU yield behavior, and JIT huge pages without changing the
+production miner configuration. It uses offline `rx/0` benchmarks, disables
+networking and MSR access, and writes a ranked report outside the repository.
+Read the [Windows tuner guide](docs/SALVIUM_RANDOMX_TUNER.md) and run its
+plan-only or smoke-test mode before starting a complete session.
+
+Linux releases include the native Bash
+[`scripts/tune-salvium-randomx.sh`](scripts/tune-salvium-randomx.sh)
+controller. It respects online and cgroup-allowed CPUs, reads physical-core,
+SMT, hybrid-class, and shared-L3 topology from Linux sysfs, and provides the
+same staged offline tuning and credential isolation. Read the
+[Linux tuner guide](docs/SALVIUM_RANDOMX_TUNER_LINUX.md) before running it.
+
 For More information on Salvium:
 
 - Salvium project: [https://salvium.io/](https://salvium.io/)
